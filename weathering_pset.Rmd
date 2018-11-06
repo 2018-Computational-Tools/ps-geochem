@@ -1,0 +1,114 @@
+---
+title: "k feldspar weathering"
+output:
+  html_document:
+    css: stylesheet.css
+    fig_caption: yes
+    number_sections: yes
+    toc: yes
+    toc_float: true
+    toc_depth: 3
+    code_folding: show
+    df_print: paged
+subtitle: "Source file: weathering_pset.Rmd"
+editor_options:
+  chunk_output_type: inline
+date: "`r Sys.Date()`"
+---
+
+# K feldspar weathering
+
+2KAlSi$_3$O$_8$ + 2H$^+$ + 9H$_2$O $\leftrightharpoons$ Al$_2$Si$_2$O$_5$(OH)$_4$ + 2K$^+$ + 4H$_4$SiO$_4$
+
+## Setup
+
+```{r setup, warning=FALSE, message=FALSE}
+# load libraries
+library(tidyverse) # dplyr, tidyr, ggplot
+library(openxlsx) # reading and writing excel file
+library(knitr) # generating reports
+library(plotly) # interactive plots
+opts_chunk$set(
+  collapse = TRUE, comment = "#>",
+  dev=c("png", "pdf"), dev.args=list(pdf = list(encoding="WinAnsi", useDingbats=FALSE))
+  )
+```
+
+
+## Initial conditions
+
+```{r}
+mol_kspar_t0 <- 1 # moles k feldspar at t0
+mol_H2O_t0 <- 1e7 # moles H2O at t0
+mol_l_H_t0 <- 1e-4 # moles per liter H+ t0
+mol_l_K_t0 <- 0 # moles per liter K+ t0
+mol_l_H4SiO4_t0 <- 0 # moles per liter H4SiO4 t0 
+mol_kaol_t0 <- 0 # moles kaolinite t0
+
+MM_H2O <- 2*1.008 + 15.999
+l_H2O_t0 <- mol_H2O_t0 * MM_H2O * 1e-3
+mol_H_t0 <- mol_l_H_t0 * l_H2O_t0 
+mol_K_t0 <- mol_l_K_t0 * l_H2O_t0 
+mol_H4SiO4_t0 <- mol_l_H4SiO4_t0 * l_H2O_t0 
+
+```
+
+```{r}
+f_rem_list <- seq(1, 0, by = -0.01)
+
+k_spar_weathering <- as.data.frame(f_rem_list)
+
+k_spar_weathering <- k_spar_weathering %>% rename("f_rem" = "f_rem_list")
+```
+
+```{r}
+k_spar_weathering <- k_spar_weathering %>% mutate(mol_kspar = mol_kspar_t0 - (1-f_rem), mol_H2O = mol_H2O_t0 - 4.5*(1-f_rem), mol_H = mol_H_t0 - 2*(1-f_rem), mol_kaol = mol_kaol_t0 +0.5*(1-f_rem), mol_K = mol_K_t0 + (1-f_rem), mol_H4SiO4 = mol_H4SiO4_t0 + 2*(1-f_rem))
+```
+
+```{r}
+k_spar_weathering <- k_spar_weathering %>% mutate(l_H2O = mol_H2O * MM_H2O * 1e-3)
+```
+
+```{r}
+k_spar_weathering <- k_spar_weathering %>% mutate(mol_l_H = mol_H / l_H2O, mol_l_K = mol_K / l_H2O, mol_l_H4SiO4 = mol_H4SiO4 / l_H2O, pH = -log10(mol_l_H))
+```
+
+```{r}
+felds_plot <- k_spar_weathering %>% ggplot(aes(x=f_rem, y = mol_kspar))+
+  geom_point()+
+  scale_x_reverse()
+
+kaol_plot <- k_spar_weathering %>% ggplot(aes(x=f_rem, y = mol_kaol))+
+  geom_point()+
+  scale_x_reverse()
+
+H_plot <- k_spar_weathering %>% ggplot(aes(x=f_rem, y = pH))+
+  geom_point()+
+  scale_x_reverse()
+
+
+K_plot <- k_spar_weathering %>% ggplot(aes(x=f_rem, y = mol_l_K))+
+  geom_point()+
+  scale_x_reverse()
+
+felds_plot
+kaol_plot
+H_plot
+K_plot
+```
+``
+
+```{r}
+k_spar_weathering <- k_spar_weathering %>% mutate(K_H_ratio = mol_l_K/mol_l_H)
+```
+
+
+```{r}
+stability_plot <- k_spar_weathering %>% ggplot(aes(x=mol_l_H4SiO4, y = K_H_ratio, color = f_rem))+
+  geom_point()+
+  scale_x_log10()+
+  scale_y_log10()
+
+stability_plot
+```
+
