@@ -15,12 +15,7 @@ editor_options:
   chunk_output_type: inline
 date: "`r Sys.Date()`"
 ---
-
-# K feldspar weathering
-
-2KAlSi$_3$O$_8$ + 2H$^+$ + 9H$_2$O $\leftrightharpoons$ Al$_2$Si$_2$O$_5$(OH)$_4$ + 2K$^+$ + 4H$_4$SiO$_4$
-
-## Setup
+# Setup
 
 ```{r setup, warning=FALSE, message=FALSE}
 # load libraries
@@ -28,6 +23,8 @@ library(tidyverse) # dplyr, tidyr, ggplot
 library(openxlsx) # reading and writing excel file
 library(knitr) # generating reports
 library(plotly) # interactive plots
+library(CHNOSZ) # stability diagrams
+data(thermo)
 opts_chunk$set(
   collapse = TRUE, comment = "#>",
   dev=c("png", "pdf"), dev.args=list(pdf = list(encoding="WinAnsi", useDingbats=FALSE))
@@ -35,80 +32,72 @@ opts_chunk$set(
 ```
 
 
+# Mineral stability diagram K$_2$O - Al$_2$O$_3$ - SiO$_2$ - H$_2$O system
+
+```{r fig.width=8, fig.height=8}
+par(mfrow = c(2, 2))
+res <- 200
+fill <- "terrain"
+
+## K2O-Al2O3-SiO2-H2O, 25 degree C, 1 bar
+## Steinmann et al., 1994 (http://ccm.geoscienceworld.org/content/42/2/197)
+## Garrels and Christ, p. 361 (http://www.worldcat.org/oclc/517586)
+## https://wwwbrr.cr.usgs.gov/projects/GWC_coupled/phreeqc/html/final-75.html
+basis(c("Al+3", "pseudo-H4SiO4", "K+", "H2O", "H+", "O2"))
+species(c("gibbsite", "muscovite", "kaolinite", "pyrophyllite", "K-feldspar"))
+a <- affinity(H4SiO4 = c(-6, -2, res), `K+` = c(-3, 6, res))
+diagram(a, ylab = ratlab("K+"), fill = fill, yline = 1.7)
+title(main = syslab(c("K2O", "Al2O3", "SiO2", "H2O")))
+legend("bottomleft", describe.property(c("T", "P"), c(25, 1)), bty = "n")
+```
+
+
+# K feldspar weathering to gibbsite
+
+KAlSi$_3$O$_8$ + H$^+$ + 7H$_2$O $\leftrightharpoons$ Al(OH)$_3$ + 2K$^+$ + 3H$_4$SiO$_4$
+
+
 ## Initial conditions
 
 ```{r}
-mol_kspar_t0 <- 1 # moles k feldspar at t0
-mol_H2O_t0 <- 1e7 # moles H2O at t0
+mol_gibbs_t0 <- 0 # moles gibbsite at t0
 mol_l_H_t0 <- 1e-4 # moles per liter H+ t0
-mol_l_K_t0 <- 0 # moles per liter K+ t0
-mol_l_H4SiO4_t0 <- 0 # moles per liter H4SiO4 t0 
-mol_kaol_t0 <- 0 # moles kaolinite t0
+mol_l_K_t0 <- 1e-6 # moles per liter K+ t0
+mol_l_H4SiO4_t0 <- 1e-6 # moles per liter H4SiO4 t0 
+#mol_kaol_t0 <- 0 # moles kaolinite t0
 
-MM_H2O <- 2*1.008 + 15.999
-l_H2O_t0 <- mol_H2O_t0 * MM_H2O * 1e-3
-mol_H_t0 <- mol_l_H_t0 * l_H2O_t0 
-mol_K_t0 <- mol_l_K_t0 * l_H2O_t0 
-mol_H4SiO4_t0 <- mol_l_H4SiO4_t0 * l_H2O_t0 
+rxn_prog_var <- 7.47e-7 # reaction progress variable is proportional to the amount of reactant mineral dissolved and defines the extent of reaction. Selection of reaction progress step is arbitrary. units are moles per kg of solution
 
+#coefficients of change for weathering of k spar to gibbsite (equation above)
+co_spar_1 <- -1
+co_H_1 <- -1
+co_H2O_1 <- -7
+co_gibbs_1 <- 1
+co_K_1 <- 1
+co_H4SiO4_1 <- 3
 ```
 
 ```{r}
-f_rem_list <- seq(1, 0, by = -0.01)
+steps <- seq(0, 26, by = 0.01)
 
-k_spar_weathering <- as.data.frame(f_rem_list)
+k_spar_to_gibbs <- as.data.frame(steps)
 
-k_spar_weathering <- k_spar_weathering %>% rename("f_rem" = "f_rem_list")
+#k_spar_weathering <- k_spar_weathering %>% rename("f_rem" = "f_rem_list")
 ```
 
 ```{r}
-k_spar_weathering <- k_spar_weathering %>% mutate(mol_kspar = mol_kspar_t0 - (1-f_rem), mol_H2O = mol_H2O_t0 - 4.5*(1-f_rem), mol_H = mol_H_t0 - 2*(1-f_rem), mol_kaol = mol_kaol_t0 +0.5*(1-f_rem), mol_K = mol_K_t0 + (1-f_rem), mol_H4SiO4 = mol_H4SiO4_t0 + 2*(1-f_rem))
+k_spar_to_gibbs <- k_spar_to_gibbs %>% mutate(mol_l_H = mol_l_H_t0 + co_H_1 * steps * rxn_prog_var, mol_l_K = mol_l_K_t0 + co_K_1 * steps * rxn_prog_var, mol_l_H4SiO4 = mol_l_H4SiO4_t0 + co_H4SiO4_1 * steps * rxn_prog_var, mol_gibbs = mol_gibbs_t0 + co_gibbs_1 * steps * rxn_prog_var, log_H4SiO4 = log10(mol_l_H4SiO4), log_K_H_ratio = log10(mol_l_K/mol_l_H))
 ```
 
 ```{r}
-k_spar_weathering <- k_spar_weathering %>% mutate(l_H2O = mol_H2O * MM_H2O * 1e-3)
+plot_k_spar_to_gibbs <- k_spar_to_gibbs %>% ggplot(aes(x=log_H4SiO4, y = log_K_H_ratio, color = steps))+
+  geom_point() +
+  scale_x_continuous(limits = c(-6, -2))+
+  scale_y_continuous(limits = c(-3, 6))
+
+plot_k_spar_to_gibbs %>% ggplotly()
 ```
 
-```{r}
-k_spar_weathering <- k_spar_weathering %>% mutate(mol_l_H = mol_H / l_H2O, mol_l_K = mol_K / l_H2O, mol_l_H4SiO4 = mol_H4SiO4 / l_H2O, pH = -log10(mol_l_H))
-```
+# K feldspar weathering
 
-```{r}
-felds_plot <- k_spar_weathering %>% ggplot(aes(x=f_rem, y = mol_kspar))+
-  geom_point()+
-  scale_x_reverse()
-
-kaol_plot <- k_spar_weathering %>% ggplot(aes(x=f_rem, y = mol_kaol))+
-  geom_point()+
-  scale_x_reverse()
-
-H_plot <- k_spar_weathering %>% ggplot(aes(x=f_rem, y = pH))+
-  geom_point()+
-  scale_x_reverse()
-
-
-K_plot <- k_spar_weathering %>% ggplot(aes(x=f_rem, y = mol_l_K))+
-  geom_point()+
-  scale_x_reverse()
-
-felds_plot
-kaol_plot
-H_plot
-K_plot
-```
-``
-
-```{r}
-k_spar_weathering <- k_spar_weathering %>% mutate(K_H_ratio = mol_l_K/mol_l_H)
-```
-
-
-```{r}
-stability_plot <- k_spar_weathering %>% ggplot(aes(x=mol_l_H4SiO4, y = K_H_ratio, color = f_rem))+
-  geom_point()+
-  scale_x_log10()+
-  scale_y_log10()
-
-stability_plot
-```
-
+2KAlSi$_3$O$_8$ + 2H$^+$ + 9H$_2$O $\leftrightharpoons$ Al$_2$Si$_2$O$_5$(OH)$_4$ + 2K$^+$ + 4H$_4$SiO$_4$
