@@ -57,7 +57,7 @@ legend("bottomleft", describe.property(c("T", "P"), c(25, 1)), bty = "n")
 KAlSi$_3$O$_8$ + H$^+$ + 7H$_2$O $\leftrightharpoons$ Al(OH)$_3$ + 2K$^+$ + 3H$_4$SiO$_4$
 
 
-## Initial conditions
+## Initial conditions, reaction 1
 
 ```{r}
 mol_gibbs_t0 <- 0 # moles gibbsite at t0
@@ -75,6 +75,51 @@ co_H2O_1 <- -7
 co_gibbs_1 <- 1
 co_K_1 <- 1
 co_H4SiO4_1 <- 3
+```
+
+```{r}
+steps <- seq(0, 26, by = 0.01)
+
+k_spar_to_gibbs <- as.data.frame(steps)
+
+#k_spar_weathering <- k_spar_weathering %>% rename("f_rem" = "f_rem_list")
+```
+
+```{r}
+k_spar_to_gibbs <- k_spar_to_gibbs %>% mutate(mol_l_H = mol_l_H_t0 + co_H_1 * steps * rxn_prog_var, mol_l_K = mol_l_K_t0 + co_K_1 * steps * rxn_prog_var, mol_l_H4SiO4 = mol_l_H4SiO4_t0 + co_H4SiO4_1 * steps * rxn_prog_var, mol_gibbs = mol_gibbs_t0 + co_gibbs_1 * steps * rxn_prog_var, log_H4SiO4 = log10(mol_l_H4SiO4), log_K_H_ratio = log10(mol_l_K/mol_l_H))
+```
+
+```{r}
+plot_k_spar_to_gibbs <- k_spar_to_gibbs %>% ggplot(aes(x=log_H4SiO4, y = log_K_H_ratio, color = steps))+
+  geom_point() +
+  scale_x_continuous(limits = c(-6, -2))+
+  scale_y_continuous(limits = c(-3, 6))
+
+plot_k_spar_to_gibbs %>% ggplotly()
+```
+
+#  K feldspar weathering, gibbsite converted to kaolinite
+
+## Initial conditions, reaction 2
+
+KAlSi$_3$O$_8$ + 2Al(OH)$_3$ + H$^+$  $\leftrightharpoons$ 1.5Al$_2$Si$_2$O$_5$(OH)$_4$ + K$^+$ + 4H$_4$SiO$_4$ + 0.5H$_2$O
+
+```{r}
+mol_gibbs_t0 <- 0 # moles gibbsite at t0
+mol_l_H_t0 <- 1e-4 # moles per liter H+ t0
+mol_l_K_t0 <- 1e-6 # moles per liter K+ t0
+mol_l_H4SiO4_t0 <- 1e-6 # moles per liter H4SiO4 t0 
+#mol_kaol_t0 <- 0 # moles kaolinite t0
+
+rxn_prog_var <- 7.47e-7 # reaction progress variable is proportional to the amount of reactant mineral dissolved and defines the extent of reaction. Selection of reaction progress step is arbitrary. units are moles per kg of solution
+
+#coefficients of change for weathering of k spar to gibbsite (equation above)
+co_spar_2 <- -1
+co_H_2 <- -1
+co_H2O_2 <- 0.5
+co_gibbs_2 <- -2
+co_K_2 <- 1
+co_H4SiO4_2 <- 4
 ```
 
 ```{r}
