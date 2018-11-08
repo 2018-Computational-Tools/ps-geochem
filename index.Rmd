@@ -1,0 +1,17 @@
+---
+title: "Geochem problem set: Microcline weathering"
+date: "Last update: `r format(Sys.Date(), '%d %b %Y')`"
+output:
+  html_document: 
+    css: stylesheet.css
+    fig_caption: yes
+    number_sections: no
+    toc: no
+editor_options:
+  chunk_output_type: inline
+---
+
+# Analysis Scripts
+
+## - [weathering_pset](weathering.pset.html)
+
