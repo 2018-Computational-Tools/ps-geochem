@@ -4,7 +4,7 @@ output:
   html_document:
     css: stylesheet.css
     fig_caption: yes
-    number_sections: yes
+    number_sections: no
     toc: yes
     toc_float: true
     toc_depth: 3
@@ -132,7 +132,7 @@ mol_l_H4SiO4_B <- k_spar_to_gibbs$mol_l_H4SiO4[2601] # moles per liter H4SiO4 at
 mol_kaol_B <- k_spar_to_gibbs$mol_kaol[2601]# moles kaolinite at end of reaction 1 (point B)
 mol_musc_B <- k_spar_to_gibbs$mol_musc[2601]# moles muscovite at end of reaction 1 (point B)
 
-#coefficients of change for weathering of k spar to gibbsite (reaction 2)
+#coefficients of change for weathering of k spar with conversion of gibbsite to kaolinite (reaction 2)
 co_spar_2 <- -1
 co_H_2 <- -1
 co_H2O_2 <- 0.5
@@ -167,7 +167,7 @@ reactions_1_2 <- union(k_spar_to_gibbs, gibbs_to_kaol)
 
 ```
 
-Plot evolution of water chemistry during k feldspar weathering to gibbsite
+Plot evolution of water chemistry during weathering of k feldspar with conversion of gibbsite to kaolinite (reaction 2)
 ```{r fig.height=6, fig.width=6}
 plot_reactions_1_2 <- reactions_1_2 %>% ggplot(aes(x=log_H4SiO4, y = log_K_H_ratio, color = steps, label = mol_l_K))+
   geom_point() +
@@ -209,7 +209,7 @@ mol_l_H4SiO4_C <- gibbs_to_kaol$mol_l_H4SiO4[1301] # moles per liter H4SiO4 at e
 mol_kaol_C <- gibbs_to_kaol$mol_kaol[1301] # moles kaolinite  at end of reaction 2 (point C)
 mol_musc_C <- gibbs_to_kaol$mol_musc[1301] # moles muscovite  at end of reaction 2 (point C)
 
-#coefficients of change for weathering of k spar to gibbsite (equation above)
+#coefficients of change for weathering of k spar to kaolinite (reaction 3)
 co_spar_3 <- -2
 co_H_3 <- -2
 co_H2O_3 <- -9
@@ -237,12 +237,12 @@ kspar_to_kaol <- kspar_to_kaol %>% mutate(mol_l_H = mol_l_H_C + co_H_3 * steps_3
 Merge data frames for reactions 1 and 2
 ```{r}
 kspar_to_kaol <- kspar_to_kaol %>% select(-steps_3)
-kspar_to_kaol <- kspar_to_kaol %>% filter(mol_l_K <= 1.01e-4)
+kspar_to_kaol <- kspar_to_kaol %>% filter(mol_l_K <= 1.01e-4) # filter out rxn steps past equilibrium
 
 reactions_1_2_3 <- union(reactions_1_2, kspar_to_kaol)
 ```
 
-Plot evolution of water chemistry during k feldspar weathering to gibbsite
+Plot evolution of water chemistry during weathering of k feldspar to kaolinite (reaction 3)
 ```{r}
 plot_reactions_1_2_3 <- reactions_1_2_3 %>% ggplot(aes(x=log_H4SiO4, y = log_K_H_ratio, color = steps, label = mol_l_K))+
   geom_point() +
@@ -272,7 +272,7 @@ plot_minerals_rxns_1_2_3 <- reactions_1_2_3 %>% ggplot()+
 plot_minerals_rxns_1_2_3
 ```
 
-# Reaction 4: K feldspar weathering to kaolinite
+# Reaction 4: K feldspar weathering with conversion of kaolinite to muscovite, reaching equilibrium between all 3 minerals
 
 KAlSi$_3$O$_8$ + Al$_2$Si$_2$O$_5$(OH)$_4$ + 3H$_2$O $\leftrightharpoons$ KAl$_3$Si$_3$O$_{10}$(OH)$_2$ + 2H$_4$SiO$_4$
 
@@ -285,7 +285,7 @@ mol_l_H4SiO4_D <- kspar_to_kaol$mol_l_H4SiO4[4744] # moles per liter H4SiO4 at e
 mol_kaol_D <- kspar_to_kaol$mol_kaol[4744] # moles kaolinite  at end of reaction 3 (point D)
 mol_musc_D <- kspar_to_kaol$mol_musc[4744] # moles muscovite  at end of reaction 3 (point D)
 
-#coefficients of change for weathering of k spar to gibbsite (equation above)
+#coefficients of change for feldspar weathering with conversion of kaolinite to muscovite (reaction 4)
 co_spar_4 <- -1
 co_H_4 <- 0
 co_H2O_4 <- -3
@@ -313,12 +313,12 @@ kspar_to_musc <- kspar_to_musc %>% mutate(mol_l_H = mol_l_H_D + co_H_4 * steps_4
 Merge data frames for reactions 1, 2, 3, and 4
 ```{r}
 kspar_to_musc <- kspar_to_musc %>% select(-steps_4)
-kspar_to_musc <- kspar_to_musc %>% filter(steps <= 100)
+kspar_to_musc <- kspar_to_musc %>% filter(steps <= 100) # filter out rxn steps past equilibrium
 
 reactions_1_2_3_4 <- union(reactions_1_2_3, kspar_to_musc)
 ```
 
-Plot evolution of water chemistry during k feldspar weathering to muscovite
+Plot evolution of water chemistry during K feldspar weathering with conversion of kaolinite to muscovite, reaching equilibrium between all 3 minerals
 ```{r}
 plot_reactions_1_2_3_4 <- reactions_1_2_3_4 %>% ggplot(aes(x=log_H4SiO4, y = log_K_H_ratio, color = steps, label = mol_l_K))+
   geom_point() +
