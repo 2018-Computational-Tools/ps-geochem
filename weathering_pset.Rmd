@@ -101,7 +101,15 @@ k_spar_to_gibbs <- as.data.frame(steps) # convert sequence to a data frame
 
 Calculate geochemistry through reaction progress
 ```{r}
-k_spar_to_gibbs <- k_spar_to_gibbs %>% mutate(mol_l_H = mol_l_H_A + co_H_1 * steps * rxn_prog_var, mol_l_K = mol_l_K_A + co_K_1 * steps * rxn_prog_var, mol_l_H4SiO4 = mol_l_H4SiO4_A + co_H4SiO4_1 * steps * rxn_prog_var, mol_gibbs = mol_gibbs_A + co_gibbs_1 * steps * rxn_prog_var, mol_kaol = mol_kaol_A + co_kaol_1 * steps * rxn_prog_var, mol_musc = mol_musc_A + co_musc_1 * steps * rxn_prog_var, log_H4SiO4 = log10(mol_l_H4SiO4), log_K_H_ratio = log10(mol_l_K/mol_l_H))
+k_spar_to_gibbs <- k_spar_to_gibbs %>% mutate(
+  mol_l_H = mol_l_H_A + co_H_1 * steps * rxn_prog_var, 
+  mol_l_K = mol_l_K_A + co_K_1 * steps * rxn_prog_var, 
+  mol_l_H4SiO4 = mol_l_H4SiO4_A + co_H4SiO4_1 * steps * rxn_prog_var, 
+  mol_gibbs = mol_gibbs_A + co_gibbs_1 * steps * rxn_prog_var, 
+  mol_kaol = mol_kaol_A + co_kaol_1 * steps * rxn_prog_var, 
+  mol_musc = mol_musc_A + co_musc_1 * steps * rxn_prog_var, 
+  log_H4SiO4 = log10(mol_l_H4SiO4), 
+  log_K_H_ratio = log10(mol_l_K/mol_l_H))
 ```
 
 Plot evolution of water chemistry during k feldspar weathering to gibbsite
@@ -154,7 +162,15 @@ gibbs_to_kaol <- gibbs_to_kaol %>% mutate(steps = steps_2 + 26)
 
 Calculate geochemistry through reaction progress
 ```{r}
-gibbs_to_kaol <- gibbs_to_kaol %>% mutate(mol_l_H = mol_l_H_B + co_H_2 * steps_2 * rxn_prog_var, mol_l_K = mol_l_K_B + co_K_2 * steps_2 * rxn_prog_var, mol_l_H4SiO4 = mol_l_H4SiO4_B + co_H4SiO4_2 * steps_2 * rxn_prog_var, mol_gibbs = mol_gibbs_B + co_gibbs_2 * steps_2 * rxn_prog_var, mol_kaol = mol_kaol_B + co_kaol_2 * steps_2 * rxn_prog_var, mol_musc = mol_musc_B + co_musc_2 * steps_2 * rxn_prog_var, log_H4SiO4 = log10(mol_l_H4SiO4), log_K_H_ratio = log10(mol_l_K/mol_l_H))
+gibbs_to_kaol <- gibbs_to_kaol %>% mutate(
+  mol_l_H = mol_l_H_B + co_H_2 * steps_2 * rxn_prog_var, 
+  mol_l_K = mol_l_K_B + co_K_2 * steps_2 * rxn_prog_var, 
+  mol_l_H4SiO4 = mol_l_H4SiO4_B + co_H4SiO4_2 * steps_2 * rxn_prog_var, 
+  mol_gibbs = mol_gibbs_B + co_gibbs_2 * steps_2 * rxn_prog_var, 
+  mol_kaol = mol_kaol_B + co_kaol_2 * steps_2 * rxn_prog_var, 
+  mol_musc = mol_musc_B + co_musc_2 * steps_2 * rxn_prog_var, 
+  log_H4SiO4 = log10(mol_l_H4SiO4), 
+  log_K_H_ratio = log10(mol_l_K/mol_l_H))
 ```
 
 Merge data frames for reactions 1 and 2
@@ -195,6 +211,93 @@ plot_minerals_rxns_1_2 <- reactions_1_2 %>% ggplot()+
 
 plot_minerals_rxns_1_2
 ```
+
+JHR - Plot accumulation of minerals with reaction progress as bar plot using gganimate
+```{r fig.height=6, fig.width=6}
+# This is slow and glitchy and only outputs as a gif --> bad solution.
+library(gganimate) # ggplotly can't animate bar plots yet :/
+
+reactions_1_2 %>% dplyr::slice(1:4)
+
+plot_minerals_rxns_1_2_anim <- reactions_1_2 %>% 
+  dplyr::slice(seq(1, n(), by = 100)) %>% # default "slice" is from CHNOSZ package
+  gather(key = "phase", value = "moles", starts_with("mol_")) %>% 
+  ggplot() +
+  aes(x = phase, y = moles, fill = phase, frame = steps) +
+  geom_bar(stat = "identity") +
+  transition_states(
+    steps,
+    transition_length = 0.01,
+    state_length = 0.1
+  )
+  
+
+
+animate(plot_minerals_rxns_1_2_anim)
+
+
+  
+  ggplot()+
+  geom_point(aes(x=steps, y=mol_musc, color = "moles muscovite"))+
+  geom_point(aes(x=steps, y=mol_gibbs, color = "moles gibbsite"))+
+  geom_point(aes(x=steps, y=mol_kaol, color = "moles kaolinite"))+
+  scale_y_continuous(name = "moles mineral in system")+
+  scale_x_continuous(name = TeX("reaction progress, $\\xi$"))+
+  theme_bw()
+
+ggplotly(plot_minerals_rxns_1_2_anim)
+```
+
+
+JHR - Plot accumulation of minerals with reaction progress as stacked bar plot
+```{r fig.height=6, fig.width=6}
+# To make this plot faster, I selected every tenth data point and increased the width of the bars.
+plot_minerals_rxns_1_2_stacked <- reactions_1_2 %>% 
+  dplyr::slice(seq(1, n(), by = 10)) %>% # default "slice" is from CHNOSZ package
+  gather(key = "phase", value = "moles", starts_with("mol_")) %>% 
+  ggplot() +
+  aes(x = steps, y = moles, fill = phase) +
+  geom_bar(stat = "identity", position = "fill", width = 1)
+
+ggplotly(plot_minerals_rxns_1_2_stacked)
+```
+
+```{r fig.height=6, fig.width=6}
+# Version of Dan's plot that's compatible with plotly
+plot_reactions_1_2 <- reactions_1_2 %>% ggplot(aes(x=log_H4SiO4, y = log_K_H_ratio, color = steps, label = mol_l_K))+
+  geom_point()
+
+ggplotly(plot_reactions_1_2)
+```
+
+
+
+
+
+
+
+JHR - Plot accumulation of minerals with reaction progress as cumulative animation
+```{r}
+
+```
+
+
+JHR - Plot accumulation of minerals with reaction progress as area chart
+```{r fig.height=6, fig.width=6}
+plot_minerals_rxns_1_2_area <- reactions_1_2 %>% 
+  ggplot() +
+  geom_area(aes(x=steps, y=mol_musc + mol_gibbs + mol_kaol, fill = "moles muscovite"))+
+  geom_area(aes(x=steps, y=mol_gibbs + mol_kaol, fill = "moles gibbsite"))+
+  geom_area(aes(x=steps, y=mol_kaol, fill = "moles kaolinite"))+
+  scale_y_continuous(name = "moles mineral in system")+
+  scale_x_continuous(name = TeX("reaction progress, $\\xi$"))+
+  theme_bw()
+
+plot_minerals_rxns_1_2_area
+ggplotly()
+```
+
+
 
 # Reaction 3: K feldspar weathering to kaolinite
 
