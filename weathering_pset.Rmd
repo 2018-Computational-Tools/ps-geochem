@@ -212,135 +212,6 @@ plot_minerals_rxns_1_2 <- reactions_1_2 %>% ggplot()+
 plot_minerals_rxns_1_2
 ```
 
-JHR - Plot accumulation of minerals with reaction progress as bar plot using gganimate
-```{r fig.height=6, fig.width=6}
-# # This is slow and glitchy and only outputs as a gif --> bad solution.
-# library(gganimate) # ggplotly can't animate bar plots yet :/
-# 
-# reactions_1_2 %>% dplyr::slice(1:4)
-# 
-# plot_minerals_rxns_1_2_anim <- reactions_1_2 %>% 
-#   dplyr::slice(seq(1, n(), by = 100)) %>% # default "slice" is from CHNOSZ package
-#   gather(key = "phase", value = "moles", starts_with("mol_")) %>% 
-#   ggplot() +
-#   aes(x = phase, y = moles, fill = phase, frame = steps) +
-#   geom_bar(stat = "identity") +
-#   transition_states(
-#     steps,
-#     transition_length = 0.01,
-#     state_length = 0.1
-#   )
-#   
-# 
-# 
-# animate(plot_minerals_rxns_1_2_anim)
-# 
-# 
-#   
-#   ggplot()+
-#   geom_point(aes(x=steps, y=mol_musc, color = "moles muscovite"))+
-#   geom_point(aes(x=steps, y=mol_gibbs, color = "moles gibbsite"))+
-#   geom_point(aes(x=steps, y=mol_kaol, color = "moles kaolinite"))+
-#   scale_y_continuous(name = "moles mineral in system")+
-#   scale_x_continuous(name = TeX("reaction progress, $\\xi$"))+
-#   theme_bw()
-# 
-# ggplotly(plot_minerals_rxns_1_2_anim)
-```
-
-
-JHR - Plot accumulation of minerals with reaction progress as stacked bar plot
-```{r fig.height=6, fig.width=6}
-# To make this plot faster, I selected every tenth data point and increased the width of the bars.
-plot_minerals_rxns_1_2_stacked <- reactions_1_2 %>% 
-  dplyr::slice(seq(1, n(), by = 10)) %>% # default "slice" is from CHNOSZ package
-  gather(key = "phase", value = "moles", starts_with("mol_")) %>% 
-  ggplot() +
-  aes(x = steps, y = moles, fill = phase) +
-  geom_bar(stat = "identity", position = "fill", width = 1)
-
-ggplotly(plot_minerals_rxns_1_2_stacked)
-```
-
-```{r fig.height=6, fig.width=6}
-# Version of Dan's plot that's compatible with plotly
-plot_reactions_1_2 <- reactions_1_2 %>% ggplot(aes(x=log_H4SiO4, y = log_K_H_ratio, color = steps, label = mol_l_K))+
-  geom_point()
-
-ggplotly(plot_reactions_1_2)
-```
-
-```{r}
-subplot(
-  ggplotly(plot_minerals_rxns_1_2_stacked),
-  ggplotly(plot_reactions_1_2)
-)
-```
-
-
-
-
-
-
-JHR - Plot accumulation of minerals with reaction progress as cumulative animation
-```{r}
-
-```
-
-
-JHR - Plot accumulation of minerals with reaction progress as area chart
-```{r fig.height=6, fig.width=6}
-plot_minerals_rxns_1_2_area <- reactions_1_2 %>% 
-  ggplot() +
-  geom_area(aes(x=steps, y=mol_musc + mol_gibbs + mol_kaol, fill = "moles muscovite"))+
-  geom_area(aes(x=steps, y=mol_gibbs + mol_kaol, fill = "moles gibbsite"))+
-  geom_area(aes(x=steps, y=mol_kaol, fill = "moles kaolinite"))+
-  scale_y_continuous(name = "moles mineral in system")+
-  scale_x_continuous(name = TeX("reaction progress, $\\xi$"))+
-  theme_bw()
-
-plot_minerals_rxns_1_2_area
-ggplotly()
-```
-
-
-
-
-
-JHR plotly direct
-
-```{r}
-
-
-
-
-
-p <- reactions_1_2 %>% 
-  dplyr::slice(seq(1, n(), by = 100)) %>% # default "slice" is from CHNOSZ package
-  gather(key = "phase", value = "moles", starts_with("mol_")) %>% 
-  plot_ly() %>%
-  add_trace(x = ~phase, y = ~moles, type = 'bar', frame = ~steps, color = ~phase) %>%
-  layout(title = "Concentrations",
-         xaxis = list(title = "Phase"),
-         yaxis = list(title = "Moles", range = c(0, 10^-4)))
-
-
-r <- reactions_1_2 %>% 
-  dplyr::slice(seq(1, n(), by = 100)) %>% # default "slice" is from CHNOSZ package
-  arrange(log_H4SiO4) %>% 
-  plot_ly() %>% 
-  add_trace(x = ~log_H4SiO4, y = ~log_K_H_ratio, frame = ~steps, marker = list(color = "black")) %>%
-  add_trace(x = ~log_H4SiO4, y = ~log_K_H_ratio, mode = "lines+markers", marker = list(color = "blue")) %>%
-  layout(title = "Concentrations",
-         xaxis = list(title = "Phase", range = c(-6, 0)),
-         yaxis = list(title = "-log_x", range = c(-2, 0)))
-
-subplot(p, r) %>% animation_opts(500, transition = 100, redraw = TRUE)
-```
-
-
-
-
 
 # Reaction 3: K feldspar weathering to kaolinite
 
@@ -493,5 +364,156 @@ plot_minerals_rxns_1_2_3_4 <- reactions_1_2_3_4 %>% ggplot()+
   theme_bw()
 
 plot_minerals_rxns_1_2_3_4
+```
+
+JHR - Plot accumulation of minerals with reaction progress as bar plot using gganimate
+```{r fig.height=6, fig.width=6}
+# # This is slow and glitchy and only outputs as a gif --> bad solution.
+# library(gganimate) # ggplotly can't animate bar plots yet :/
+# 
+# reactions_1_2 %>% dplyr::slice(1:4)
+# 
+# plot_minerals_rxns_1_2_anim <- reactions_1_2 %>% 
+#   dplyr::slice(seq(1, n(), by = 100)) %>% # default "slice" is from CHNOSZ package
+#   gather(key = "phase", value = "moles", starts_with("mol_")) %>% 
+#   ggplot() +
+#   aes(x = phase, y = moles, fill = phase, frame = steps) +
+#   geom_bar(stat = "identity") +
+#   transition_states(
+#     steps,
+#     transition_length = 0.01,
+#     state_length = 0.1
+#   )
+#   
+# 
+# 
+# animate(plot_minerals_rxns_1_2_anim)
+# 
+# 
+#   
+#   ggplot()+
+#   geom_point(aes(x=steps, y=mol_musc, color = "moles muscovite"))+
+#   geom_point(aes(x=steps, y=mol_gibbs, color = "moles gibbsite"))+
+#   geom_point(aes(x=steps, y=mol_kaol, color = "moles kaolinite"))+
+#   scale_y_continuous(name = "moles mineral in system")+
+#   scale_x_continuous(name = TeX("reaction progress, $\\xi$"))+
+#   theme_bw()
+# 
+# ggplotly(plot_minerals_rxns_1_2_anim)
+```
+
+
+JHR - Plot accumulation of minerals with reaction progress as stacked bar plot
+```{r fig.height=6, fig.width=6}
+# To make this plot faster, I selected every tenth data point and increased the width of the bars.
+plot_minerals_rxns_1_2_3_4_stacked <- reactions_1_2_3_4 %>% 
+  dplyr::slice(seq(1, n(), by = 10)) %>% # default "slice" is from CHNOSZ package
+  gather(key = "phase", value = "moles", starts_with("mol_")) %>% 
+  ggplot() +
+  aes(x = steps, y = moles, fill = phase) +
+  geom_bar(stat = "identity", position = "fill", width = 1)
+
+ggplotly(plot_minerals_rxns_1_2_3_4_stacked)
+```
+
+```{r fig.height=6, fig.width=6}
+# Version of Dan's plot that's compatible with plotly
+plot_reactions_1_2_3_4 <- reactions_1_2_3_4 %>% ggplot(aes(x=log_H4SiO4, y = log_K_H_ratio, color = steps, label = mol_l_K))+
+  geom_point()
+
+ggplotly(plot_reactions_1_2_3_4)
+```
+
+```{r}
+subplot(
+  ggplotly(plot_minerals_rxns_1_2_3_4_stacked),
+  ggplotly(plot_reactions_1_2_3_4)
+)
+```
+
+
+
+
+
+JHR - Plot accumulation of minerals with reaction progress as area chart - not currently working
+```{r fig.height=6, fig.width=6}
+# plot_minerals_rxns_1_2_3_4_area <- reactions_1_2_3_4 %>% 
+#   ggplot() +
+#   geom_area(aes(x=steps, y=mol_musc + mol_gibbs + mol_kaol, fill = "moles muscovite"))+
+#   geom_area(aes(x=steps, y=mol_gibbs + mol_kaol, fill = "moles gibbsite"))+
+#   geom_area(aes(x=steps, y=mol_kaol, fill = "moles kaolinite"))+
+#   scale_y_continuous(name = "moles mineral in system")+
+#   scale_x_continuous(name = "reaction progress, $\\xi$")+
+#   theme_bw()
+# 
+# ggplotly(plot_minerals_rxns_1_2_3_4_area)
+```
+
+
+
+
+JHR plotly direct
+
+```{r}
+
+p <- reactions_1_2_3_4 %>% 
+  dplyr::slice(seq(1, n(), by = 100)) %>% # default "slice" is from CHNOSZ package
+  gather(key = "phase", value = "moles", starts_with("mol_")) %>% 
+  plot_ly() %>%
+  add_trace(x = ~phase, y = ~moles, type = 'bar', frame = ~steps, color = ~phase) %>%
+  layout(title = "Concentrations",
+         xaxis = list(title = "Phase"),
+         yaxis = list(title = "Moles", range = c(0, 10^-4)))
+
+
+r <- reactions_1_2_3_4 %>% 
+  dplyr::slice(seq(1, n(), by = 100)) %>% # default "slice" is from CHNOSZ package
+  arrange(log_H4SiO4) %>% 
+  plot_ly() %>% 
+  add_trace(x = ~log_H4SiO4, y = ~log_K_H_ratio, mode = "lines+markers", marker = list(color = "black")) %>%
+  add_trace(x = ~log_H4SiO4, y = ~log_K_H_ratio, frame = ~steps, marker = list(color = "red")) %>%
+  layout(title = "Concentrations",
+         xaxis = list(title = "Phase", range = c(-6, -3)),
+         yaxis = list(title = "-log_x", range = c(-3, 5)))
+
+subplot(p, r, nrows = 2) %>% animation_opts(500, transition = 100, redraw = TRUE)
+```
+
+
+
+Cumulative animation option
+```{r}
+# accumulate_by <- function(dat, var) {
+#   var <- lazyeval::f_eval(var, dat)
+#   lvls <- plotly:::getLevels(var)
+#   dats <- lapply(seq_along(lvls), function(x) {
+#     cbind(dat[var %in% lvls[seq(1, x)], ], frame = lvls[[x]])
+#   })
+#   dplyr::bind_rows(dats)
+# }
+# 
+# p <- reactions_1_2_3_4 %>% 
+#   dplyr::slice(seq(1, n(), by = 100)) %>% # default "slice" is from CHNOSZ package
+#   gather(key = "phase", value = "moles", starts_with("mol_")) %>% 
+#   plot_ly() %>%
+#   add_trace(x = ~phase, y = ~moles, type = 'bar', frame = ~steps, color = ~phase) %>%
+#   layout(title = "Concentrations",
+#          xaxis = list(title = "Phase"),
+#          yaxis = list(title = "Moles", range = c(0, 10^-4)))
+# 
+# r <- reactions_1_2_3_4 %>% 
+#   dplyr::slice(seq(1, n(), by = 100)) %>% # default "slice" is from CHNOSZ package
+#   arrange(log_H4SiO4) %>% 
+#   accumulate_by(~log_H4SiO4) %>% 
+#   plot_ly() %>% 
+#   add_trace(x = ~log_H4SiO4, y = ~log_K_H_ratio, frame = ~frame, type = 'scatter',
+#     mode = 'lines+markers', 
+#     line = list(simplyfy = F)) %>%
+#   layout(title = "Concentrations",
+#          xaxis = list(title = "Phase", range = c(-6, 0)),
+#          yaxis = list(title = "-log_x", range = c(-2, 0)))
+
+# This currently doesn't work as p animates by steps and r animates by frame
+# subplot(p, r) %>% animation_opts(500, transition = 100, redraw = TRUE)
 ```
 
