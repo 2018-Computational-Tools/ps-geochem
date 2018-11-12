@@ -327,8 +327,10 @@ p <- reactions_1_2 %>%
 
 r <- reactions_1_2 %>% 
   dplyr::slice(seq(1, n(), by = 100)) %>% # default "slice" is from CHNOSZ package
+  arrange(log_H4SiO4) %>% 
   plot_ly() %>% 
   add_trace(x = ~log_H4SiO4, y = ~log_K_H_ratio, frame = ~steps, marker = list(color = "black")) %>%
+  add_trace(x = ~log_H4SiO4, y = ~log_K_H_ratio, mode = "lines+markers", marker = list(color = "blue")) %>%
   layout(title = "Concentrations",
          xaxis = list(title = "Phase", range = c(-6, 0)),
          yaxis = list(title = "-log_x", range = c(-2, 0)))
