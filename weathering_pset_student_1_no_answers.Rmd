@@ -1,0 +1,788 @@
+---
+title: "Mineral Stability Diagrams: K Feldspar Weathering"
+output:
+  html_document:
+    css: stylesheet.css
+    fig_caption: yes
+    number_sections: yes
+    toc: yes
+    toc_float: true
+    toc_depth: 3
+    code_folding: show
+    df_print: paged
+subtitle: "Source file: weathering_pset.Rmd"
+editor_options:
+  chunk_output_type: inline
+date: "`r Sys.Date()`"
+---
+
+
+
+# Introduction
+## Technical prerequisites
+* none
+
+## Conceptual prerequisites
+* familiarity with mineral stability diagrams
+* using log rules to linearize equilibrium equations
+* plotting in log space
+
+## Learning goals
+* plot equilibrium lines on a mineral stability diagram using R
+* improve visualization of reaction paths
+* connect groundwater chemistry to mineral assemblages
+
+## Background information
+A mineral stability diagram shows the boundaries between the thermodynamic stability regions of different minerals (i.e., where the mineral begins to precipitate) as a function of two or more master variables, often the activities or activity ratios of the major controlling species present (Kinniburgh and Cooper, 2004 https://pubs.acs.org/doi/pdf/10.1021/es034927l)
+
+One application of mineral stability diagrams is to trace how _primary minerals_, which are often igneous or metamorphic, react _(weather)_ into _secondary mineral_ products when primary minerals contact water with which they are not in thermodynamic equilibrium.
+
+In this R markdown file, we derive a mineral stability diagram, then calculate and visualize changes in water chemistry and secondary mineral assemblages as the common igneous primary mineral microcline (a form of potassium feldspar) reacts with a typical, mildly acidic soil water. Chemical weathering is a ubiquitous process on Earth's surface that is of fundamental importance due to its impact on the aqueous chemistry and mineralogy, as we will observe.
+
+By the way, R markdown documents use a notebook interface to weave together narrative text and code to produce elegantly formatted output. Plus, they are fully reproducible. All the cool kids are using them!
+
+Before diving into the chemistry, let's visualize the mineral stability diagram for the $\text{K}_2\text{O} - \text{Al}_2\text{O}_3 - \text{SiO}_2 - \text{H}_2\text{O}$ system.
+
+Woah, wait up... what are those weird money signs and brackets about? That's the $\TeX$ typesetting system, which is used to beautify equations and other science-y text. R markdown will format that when you 'knit' the document (more on that later), but for now, you can mouse over anything in money signs to display a rendered version. Try it!
+
+First, we need to load some packages. Packages contain functions that other smarty-pants wizards wrote. That's one great thing about R: no need to re-invent the wheel. Run this code chunk by pressing the green arrow in the right hand corner of the gray box below, or move your cursor into the chunk and press Ctrl+Alt+C (Windows) or command+option+C (Mac).
+
+# Setup
+
+```{r setup, warning=FALSE, message=FALSE}
+# load libraries
+library(tidyverse) # dplyr, tidyr, ggplot
+library(knitr) # generating reports
+library(plotly) # interactive plots
+library(CHNOSZ) # stability diagrams
+library(latex2exp) # writing compounds and greek letters in plots
+data(thermo)
+opts_chunk$set(
+  collapse = TRUE, comment = "#>",
+  dev=c("png", "pdf"), dev.args=list(pdf = list(encoding="WinAnsi", useDingbats=FALSE))
+  )
+```
+
+# Mineral stability diagram for the $\text{K}_2\text{O} - \text{Al}_2\text{O}_3 - \text{SiO}_2 - \text{H}_2\text{O}$ system
+The R package 'CHNOSZ' contains a speciation function, which calculates the distribution of chemical species based on their thermodynamic characteristics, which are stored in a large database contained in the package. To generate the mineral stability diagram for the $\text{K}_2\text{O} - \text{Al}_2\text{O}_3 - \text{SiO}_2 - \text{H}_2\text{O}$ system at T = 25˚C and P = 1 bar using the CHNOSZ package, run the chunk below.
+
+```{r fig.width=7, fig.height=6, warning=FALSE, error=FALSE, message=FALSE}
+#' retrieve diagram data from affinity object
+#' @param affinity object calculated by \link[CHNOSZ]{affinity}
+#' @return tidy data frame with the plot areas
+get_diagram_data <- function(affinity) {
+  
+  # get diagram object
+  dout <- suppressMessages(diagram(affinity, plot.it = FALSE))
+  
+  # get area names
+  if (affinity$property %in% c("G.basis", "logact.basis")){
+    area <- rownames(affinity$basis)
+  }else {
+    area <- as.character(affinity$species$name)
+  }
+  
+  if (length(area) == 0) {
+    stop("no area names found", call. = FALSE)
+  }
+  
+  # axes
+  x_axis <- data_frame(x = dout$vals[[1]], x_idx = seq_along(x))
+  y_axis <- data_frame(y = dout$vals[[2]], y_idx = seq_along(y))
+  
+  # contours
+  contours <- dout$predominant %>% 
+    as.data.frame.table() %>% tbl_df() %>% 
+    rename(x_idx = Var1, y_idx = Var2, area_idx = Freq) %>% 
+    mutate_at(vars(x_idx, y_idx), as.numeric)
+  
+  # area labels
+  areas <- data_frame(
+    area = !!area,
+    area_idx = seq_along(area)
+  )
+  
+  # combine everything
+  contours %>% 
+    left_join(x_axis, by = "x_idx") %>% 
+    left_join(y_axis, by = "y_idx") %>% 
+    left_join(areas, by = "area_idx") %>% 
+    # find horizontal borders
+    arrange(y_idx, x_idx) %>%
+    mutate(border =
+             c(FALSE, diff(area_idx) != 0 & diff(y_idx) == 0) |
+             c(diff(area_idx) != 0 & diff(y_idx) == 0, FALSE)) %>%
+    # find vertical borders
+    arrange(x_idx, y_idx) %>%
+    mutate(border = border |
+             c(FALSE, diff(area_idx) != 0 & diff(x_idx) == 0) |
+             c(diff(area_idx) != 0 & diff(x_idx) == 0, FALSE)) 
+}
+
+#' plot diagram data
+#' @param diagram_data data frame generated by \code{get_diagram_data}
+plot_diagram_data <- function(diagram_data) {
+  diagram_data %>% 
+  ggplot() + 
+    aes(x = x, y = y, fill = area) +
+    # area fills
+    geom_raster() +
+    # border lines
+    geom_raster(data = function(df) filter(df, border), fill = "black") +
+    # area labels
+    geom_text(data = function(df) {
+      df %>% group_by(area_idx, area) %>% 
+        summarize(x = mean(x), y = mean(y))
+    }, mapping = aes(label = area, fill = NULL)) +
+    # scales
+    scale_fill_manual(
+      values = diagram_data$area_idx %>% unique() %>% length() %>% 
+        terrain.colors()) +
+    scale_x_continuous(expand = c(0,0)) +
+    scale_y_continuous(expand = c(0,0)) +
+    theme_bw()
+}
+
+par(mfrow = c(2, 2))
+res <- 200
+fill <- "terrain"
+
+## K2O-Al2O3-SiO2-H2O, 25 degree C, 1 bar
+## Steinmann et al., 1994 (http://ccm.geoscienceworld.org/content/42/2/197)
+## Garrels and Christ, p. 361 (http://www.worldcat.org/oclc/517586)
+## https://wwwbrr.cr.usgs.gov/projects/GWC_coupled/phreeqc/html/final-75.html
+basis <- basis(c("Al+3", "pseudo-H4SiO4", "K+", "H2O", "H+", "O2"))
+species <- species(c("gibbsite", "muscovite", "kaolinite", "K-feldspar"))
+a <- affinity(H4SiO4 = c(-6, -2, res), `K+` = c(-3, 6, res))
+
+# process
+a %>% 
+  # fetch tidy data frame
+  get_diagram_data() %>% 
+  # plot as ggplot
+  plot_diagram_data() +
+  # add labels
+  labs(
+    x = latex2exp::TeX("$\\log\\lbrack H_4SiO_4\\rbrack$$"),
+    y = latex2exp::TeX("$\\log\\frac{\\lbrack K^+ \\rbrack}{\\lbrack H^+ \\rbrack}$"),
+    fill = "")
+```
+
+Wow, we just pressed 2 buttons and made a lot of science happen! But what is the above diagram telling us? The x-axis of the diagram is $\text{log}[\text{H}_{4}\text{SiO}_{4}]$, which is silicic acid. The Y-axis is $\text{log}\frac {[\text{K}^{+}]}{[\text{H}^{+}]}$. These species were chosen because they control the stability of the minerals in this sytem, but different species could be plotted depending on the system of interest. Soon, we will see why the log concentrations are plotted. This diagram shows the stable mineral at a wide range of water chemistry conditions.
+
+**Question 1** What is the stable mineral under the following conditions: $\text{log}[\text{H}_{4}\text{SiO}_{4}]=-3$, $\text{log}\frac {[\text{K}^{+}]}{[\text{H}^{+}]}=0$, T = 25˚C and P = 1 bar?
+
+Now that you can visualize and interpret a mineral stability diagram, let's investigate how it is actually created.
+
+You should have already derived in class all the equilibria that are relevant to the system we've been discussing. For your reference, the equations and equilibrium constants, $K$ at 25˚C are provided below.
+
+**kaolinite - gibbsite**
+$\text{Al}_3\text{Si}_2\text{O}_5\text{(OH)}_4 + 5\text{H}_2\text{O}  \leftrightharpoons 2\text{Al}\text{(OH)}_3 + 2\text{H}_4\text{SiO}_4, \space  K =10^{-9.35} \space \text{(reaction 1)}$
+
+**muscovite - gibbsite**
+$\text{KAl}_3\text{Si}_3\text{O}_{10}\text{(OH)}_2 + 9\text{H}_2\text{O} + \text{H}^+ \leftrightharpoons 3\text{Al}\text{(OH)}_3  + \text{K}^+ + 3\text{H}_4\text{SiO}_4, K = \text{10}^{-9.97} \space \text{(reaction 2)}$
+
+**muscovite - kaolinite**
+$2\text{KAl}_3\text{Si}_3\text{O}_{10}\text{(OH)}_2 + 3\text{H}_2\text{O} + 2\text{H}^+ \leftrightharpoons 3\text{Al}_2\text{Si}_2\text{O}_5\text{(OH)}_4 + 2 \text {K}^+, \space K = 10^{8.11} \space \text{(reaction 3)}$
+
+**microcline - muscovite**
+$3\text{KAlSi}_3\text{O}_8 + 2\text{H}^+ + 12\text{H}_2\text{O}  \leftrightharpoons \text{KAl}_3\text{Si}_3\text{O}_{10}\text{(OH)}_2 + 2 \text {K}^+ + 6\text{H}_{4}\text{SiO}_{4},\space K = 10^{-11.865} \space \text{(reaction 4)}$
+
+**microcline - kaolinite**
+$2\text{KAlSi}_3\text{O}_8 + 2\text{H}^+ + 9\text{H}_2\text{O} \leftrightharpoons  \text{Al}_2\text{Si}_2\text{O}_5\text{(OH)}_4 + 2\text{K}^+ + 4\text{H}_{4}\text{SiO}_{4} \space K =\text {10}^{-5.21} \space \text{(reaction 5)}$
+
+We can relate these equations to their equilibrium constants through the law of mass action, i.e. for Kaolinite - Gibbsite (reaction 1):
+
+$\left[\text{H}_4\text{SiO}_4\right]^2=10^{-9.35}$ (recall that solids and water have activity of 1 and thus cancel)
+
+How could we visualize this? Not that the right side of the equation contains $10^{-9.35}$. Thus if we apply our exponent and log rules, and take the $\log_{10}$ of both sides, we can rearrange the above equation to:
+
+$\log\left[\text{H}_4\text{SiO}_4\right]=-4.675$
+
+Let's run the following chunk to assign our solution to a numeric value using "<-" so we can use it later
+```{r}
+gibb_intersect_H4SiO4 <- -4.675 # solve for Y coordinate of the two intersecting equilibrium lines and assign it to a numeric value
+gibb_intersect_H4SiO4 # print that value
+```
+
+Now, we can plot the above equation as a vertical line with $\log\left[\text{H}_4\text{SiO}_4\right]$ on the X axis. This line indicates water chemistries at which gibbsite and kaolinite can coexist at equilibrium. Run the code chunk below to see this line plotted. Note: we're using the ggplot2 package for plotting here, and using the geom_vline() function to plot a vertical line. You can see in the code that we've written in the X intercept of -4.675. We'll be using comments (un-executed code) with a #hashtag symbol to guide you through the relevant pieces of code.
+
+```{r fig.height=4, fig.width=4}
+plot_stability_segment <- ggplot()+
+  geom_vline(xintercept = gibb_intersect_H4SiO4) + # add vertical line for gibbsite - kaolinite equilibrium
+  scale_x_continuous(limits = c(-6, -2), expand = c(0, 0), name = TeX("$\\log\\lbrack H_4SiO_4\\rbrack$"))+
+   scale_y_continuous(limits = c(-3, 6), expand = c(0, 0), name = TeX("$\\log\\frac{\\lbrack K^+ \\rbrack}{\\lbrack H^+ \\rbrack}$"))+
+  scale_color_continuous(name = TeX("reaction progress, $\\xi$"))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+ theme(axis.title.y = element_text(angle = 0, vjust = .5, size = 11))
+
+plot_stability_segment
+```
+
+As we can now see, plotting in log coordinates has allowed us to visualize equilibrium equations as straight lines. We are well on our way to completing a mineral stability diagram!
+
+Now let's see what happens if we try to add another equilibrium line to the diagram. This time, we'll use the Muscovite - Gibbsite equilibrium (reaction 2 from above)
+
+$\text{KAl}_3\text{Si}_3\text{O}_{10}\text{(OH)}_2 + 9\text{H}_2\text{O} + \text{H}^+ \leftrightharpoons 3\text{Al}\text{(OH)}_3  + \text{K}^+ + 3\text{H}_4\text{SiO}_4, K = \text{10}^{-9.97}$
+
+Relating concentrations to the equilibrium constant with the Law of Mass Action:
+$\frac{\left[\text{H}_4\text{SiO}_4\right]^3\left[\text{H}^+\right]}{\left[\text{K}^+\right]}=10^{-9.97}$
+
+Taking log of both sides:
+$3\log\left[\text{H}_4\text{SiO}_4\right]+\log\frac{\left[\text{K}^+\right]}{\left[\text{H}^+\right]}=-9.97$
+
+Rearranging:
+$\log\frac{\left[\text{K}^+\right]}{\left[\text{H}^+\right]}=-3\log\left[\text{H}_4\text{SiO}_4\right]-9.97$
+
+The above expression is the equation for a straight line in the form Y=mX+b on a plot of $\log\frac{\left[\text{K}^+\right]}{\left[\text{H}^+\right]}$ vs. $\log\left[\text{H}_4\text{SiO}_4\right]$
+
+We can add this line to our mineral stability plot using the geom_abline() function, which takes the slope and Y-intercept of a line as arguments. See and run the code chunk below.
+```{r fig.height=4, fig.width=4}
+plot_stability_segment2 <- ggplot()+
+  geom_vline(xintercept = gibb_intersect_H4SiO4) +
+  geom_abline(intercept = -9.97, slope = -3) + # add straight line in slope-intercept form for muscovite gibbsite equilibrium
+   scale_x_continuous(limits = c(-6, -2), expand = c(0, 0), name = TeX("$\\log\\lbrack H_4SiO_4\\rbrack$"))+
+   scale_y_continuous(limits = c(-3, 6), expand = c(0, 0), name = TeX("$\\log\\frac{\\lbrack K^+ \\rbrack}{\\lbrack H^+ \\rbrack}$"))+
+  scale_color_continuous(name = TeX("reaction progress, $\\xi$"))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+ theme(axis.title.y = element_text(angle = 0, vjust = .5, size = 11))
+
+plot_stability_segment2
+```
+
+Cool, it's starting to look like a mineral stability diagram, but as you can see, the lines intersect. How do we deal with this? First, let's annotate the text "gibbsite" in its stability field, just like in the plot we made with the CHNOSZ package. We can do this using the annotate() function. We just tell it what we want to annotate (text), the X and Y coordinates, of our annotation, as well as what should be on the label (gibbsite), and the size of the letters (4). See and run the chunk.
+
+```{r fig.height=4, fig.width=4}
+plot_stability_segment3 <- ggplot()+
+  geom_vline(xintercept = gibb_intersect_H4SiO4) +
+  geom_abline(intercept = -9.97, slope = -3) +
+   scale_x_continuous(limits = c(-6, -2), expand = c(0, 0), name = TeX("$\\log\\lbrack H_4SiO_4\\rbrack$"))+
+   scale_y_continuous(limits = c(-3, 6), expand = c(0, 0), name = TeX("$\\log\\frac{\\lbrack K^+ \\rbrack}{\\lbrack H^+ \\rbrack}$"))+
+  scale_color_continuous(name = TeX("reaction progress, $\\xi$"))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+ theme(axis.title.y = element_text(angle = 0, vjust = .5, size = 11))+
+  annotate("text", y = 4, x=-5.4, label = "gibbsite", size = 4)
+
+plot_stability_segment3
+```
+
+**Question 2** How you could infer which of the areas on the above plot is the stability field for gibbsite using Le Châtelier's Principle? Explain.
+
+Since gibbsite is only stable in one region on this plot, we must remove the excess lines, which are meaningless. To do this, we must first solve for the point at which these two lines intersect. The X coordinate of the point of intersection will be -4.68, which we take for the equation of a vertical line that we derived for the Kaolinite - Gibbsite equilibrium. We can then simply plug in that X value to the equilibrium line we derived for the Muscovite - Gibbsite equilibrium. Run the chunk below to plug calculate the Y coordinate of the point of intersection.
+
+
+```{r}
+gibb_intersect_KH <- -3*-4.68-9.97 # solve for Y coordinate of the two intersecting equilibrium lines and assign it to a numeric value
+gibb_intersect_KH # print that value
+```
+
+Now, we can use the geom_segment() function to plot two line segments that define the borders of the gibbsite stability field. The geom_segment() function takes two XY coordinate points as arguments, and draws a line through them. In our case, the lines hit the edges of the region we have chosen to display on our plot. For the vertical line, it is simple to infer where it hits the edge, but for the sloped line, we must solve for it.
+
+
+
+```{r}
+gibb_musc_edge_H4SiO4 <- -(6+9.97)/3 # solve for X coordinate where gibbsite-muscovite equilibrium line exits the plot and assign it to a numeric value
+gibb_musc_edge_H4SiO4  # print that value
+```
+
+
+```{r fig.height=4, fig.width=4}
+plot_stability_segment4 <- ggplot()+
+  geom_segment(aes(x = gibb_intersect_H4SiO4, y = gibb_intersect_KH, xend = gibb_intersect_H4SiO4, yend = -3))+ # gibbsite - kaolinite equilibrium line
+  geom_segment(aes(x = gibb_intersect_H4SiO4, y = gibb_intersect_KH, xend = gibb_musc_edge_H4SiO4, yend = 6))+ # gibbsite - muscovite equilibrium line
+   scale_x_continuous(limits = c(-6, -2), expand = c(0, 0), name = TeX("$\\log\\lbrack H_4SiO_4\\rbrack$"))+
+   scale_y_continuous(limits = c(-3, 6), expand = c(0, 0), name = TeX("$\\log\\frac{\\lbrack K^+ \\rbrack}{\\lbrack H^+ \\rbrack}$"))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+ theme(axis.title.y = element_text(angle = 0, vjust = .5, size = 11))+
+ annotate("text", y = 4, x=-5.4, label = "gibbsite", size = 4)
+
+plot_stability_segment4
+```
+
+**Question 3** OK now it's your turn. Solve for the equilibrium lines for Muscovite - Kaolinite and Microcline - Muscovite, and then input the endpoints of segments in the chunk below to plot them. Please do your calculations on corresponding worksheet distributed to the class.  *In case you need a refresher, there is a Exponent and Logarithm Rule Cheat Sheet in the repository for your reference.*
+
+muscovite - kaolinite
+$2\text{KAl}_3\text{Si}_3\text{O}_{10}\text{(OH)}_2 + 3\text{H}_2\text{O} + 2\text{H}^+ \leftrightharpoons 3\text{Al}_2\text{Si}_2\text{O}_5\text{(OH)}_4 + 2 \text {K}^+, \space K = 10^{8.11} \space \text{(reaction 3)}$
+
+microcline - muscovite
+$3\text{KAlSi}_3\text{O}_8 + 2\text{H}^+ + 12\text{H}_2\text{O}  \leftrightharpoons \text{KAl}_3\text{Si}_3\text{O}_{10}\text{(OH)}_2 + 2 \text {K}^+ + 6\text{H}_{4}\text{SiO}_{4},\space K = 10^{-11.865} \space \text{(reaction 4)}$
+
+```{r}
+kaol_musc_micr_eq_point_KH <- 4.055 # students should assign the log K/H value for the equilibrium point between kaolinite muscovite and microcline here
+kaol_musc_micr_eq_point_KH
+```
+
+```{r}
+kaol_musc_micr_eq_point_H4SiO4 <- -(kaol_musc_micr_eq_point_KH + 5.9325) / 3 # students should assign the log H4SiO4 value  for the equilibrium point between kaolinite muscovite and microcline here
+kaol_musc_micr_eq_point_H4SiO4
+```
+
+```{r}
+musc_micr_edge_KH <- 6 # students should assign the log K/H value for where the microcline - muscovite equilibrium line intersects the edge of the plotted area here
+musc_micr_edge_KH
+```
+
+```{r}
+musc_micr_edge_H4SiO4 <- -(musc_micr_edge_KH + 5.9325) / 3 # students should assign the log K/H value for where the microcline - muscovite equilibrium line intersects the edge of the plotted area here
+musc_micr_edge_H4SiO4
+```
+
+[End answer 3]
+
+```{r}
+kaol_micr_edge_KH <- -2*-2-2.6 # The the microcline - kaolinite line is solved for you
+kaol_micr_edge_KH
+```
+Now, if you solved the equations and saved them to the appropriate variables, then running the following code chunk should generate a complete mineral stability diagram. It should look like the first figure you generated using the CHNOSZ package.
+
+```{r fig.height=4, fig.width=4}
+plot_stability_segment5 <- ggplot()+
+  geom_segment(aes(x = gibb_intersect_H4SiO4, y = gibb_intersect_KH, xend = -4.68, yend = -3))+
+  geom_segment(aes(x = gibb_intersect_H4SiO4, y = gibb_intersect_KH, xend = gibb_musc_edge_H4SiO4, yend = 6))+
+  geom_segment(aes(x = gibb_intersect_H4SiO4, y = gibb_intersect_KH, xend = kaol_musc_micr_eq_point_H4SiO4, yend = kaol_musc_micr_eq_point_KH))+ # muscovite - kaolinite equilibrium line
+  geom_segment(aes(x = kaol_musc_micr_eq_point_H4SiO4, y = kaol_musc_micr_eq_point_KH, xend = musc_micr_edge_H4SiO4, yend = musc_micr_edge_KH))+ #microcline - muscovite equilibrium line
+  geom_segment(aes(x = kaol_musc_micr_eq_point_H4SiO4, y = kaol_musc_micr_eq_point_KH, xend = -2, yend = kaol_micr_edge_KH))+ #microcline - kaolinite equilibrium line
+  scale_x_continuous(limits = c(-6, -2), expand = c(0, 0), name = TeX("$\\log\\lbrack H_4SiO_4\\rbrack$"))+
+   scale_y_continuous(limits = c(-3, 6), expand = c(0, 0), name = TeX("$\\log\\frac{\\lbrack K^+ \\rbrack}{\\lbrack H^+ \\rbrack}$"))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+ theme(axis.title.y = element_text(angle = 0, vjust = .5, size = 11))+
+ annotate("text", y = 4, x= -5.4, label = "gibbsite", size = 4)+
+ annotate("text", y = 5.5, x= -4.5, label = "muscovite", size = 4)+
+ annotate("text", y = 5.5, x= -3, label = "microcline", size = 4)+
+ annotate("text", y = -2, x= -3, label = "kaolinite", size = 4)
+
+plot_stability_segment5
+```
+
+# Reaction Path Modeling
+
+Now that you have successfully derived the mineral stability diagram, we will trace changing water chemistry as microline weathers in the presence of soil water. This is a type of _reaction path_ modeling.
+
+Our calculations are adapted from the model of Steinmann et al., (1994) (http://ccm.geoscienceworld.org/content/42/2/197 - PDF can be found in the same folder as this Rmd file), which is based the following assumptions:
+
+1. The system is closed and the water/rock ratio is small. This is akin to having an essentially infinite amount of rock that is able to be weathered.
+2. The secondary minerals are in equilibrium with ions in the solution even though the primary minerals are not in equilibrium.
+3. Temperature and pressure are constant.
+4. Aluminum is conserved in the reactions.
+5. The solutions remain dilute such that all activity coefficients are close to unity.
+
+## Microcline weathering to gibbsite
+
+We are going to start with the single mineral microcline in typical acidic soil water, which has the following ion concentrations:
+
+$\left[\text{H}_4\text{SiO}_4\right] = 1\text{e}-6$
+
+$\left[\text{K}^{+}\right] = 1\text{e}-6$
+
+$\text{pH} = 4$
+
+Remember that $\text{pH} = -\log\left[\text{H}^+\right]$.
+
+When you plot the initial water chemistry point in the chunk below, you should notice that it sits within the gibbsite field. This indicates that microcline is NOT stable in this water chemistry.
+
+The next question is now which weathering reaction should we use for this initial step? Well, we know that we have microcline and that our water chemistry is in the gibbsite field. So, the weathering reaction we use first will be microcline to gibbsite. The following R code chunks will walk you though how this calculation is done.
+
+**microcline to gibbsite**
+$\text{KAlSi}_3\text{O}_8 + \text{H}^+ + 7\text{H}_2\text{O} \leftrightharpoons \text{Al(OH)}_3 + \text{K}^+ + 3\text{H}_4\text{SiO}_4  \space \text{(reaction 6)}$
+
+**Question 4** Why did we not derive a phase diagram boundary line for the microcline to gibbsite reaction?
+
+In the next chunk, we will assign variables for the initial chemical conditions. We then assign an arbitrary _reaction progress variable_, which is simply a placeholder to mark how far the reaction has progressed towards equilibrium. Note that this is not a kinetic model, and that the reaction progress does not accurately represent time. Then we assign variables for the coefficients of reaction 6, where positive values are assigned for the stoichiometry of products and negative values are for reactants. We then create a sequence of reaction steps, and calculate chemistry at each step from the stoichiometric coefficients. We then print out a data frame of ion concentrations and moles of mineral at each step, which you can have a look at to get a feel for the data.
+
+**Question 5** Assign the initial proton concentration in moles per liter to the variable "mol_l_H_A" in the chunk below, then run it.
+
+```{r}
+#initial conditions are no secondary minerals (only primary mineral, microcline), and water chemistry of typical acidic soil
+mol_gibbs_A <- 0 # moles gibbsite at t0
+mol_l_H_A <- #### ENTER PROTON CONCENTRATION OF A TYPICAL ACIDIC SOIL, pH =4  # moles per liter H+ t0
+mol_l_K_A <- 1e-6 # moles per liter K+ t0
+mol_l_H4SiO4_A <- 1e-6 # moles per liter H4SiO4 t0
+mol_kaol_A <- 0 # moles kaolinite t0
+mol_musc_A <- 0 # moles muscovite t0
+
+rxn_prog_var <- 1.882e-6 # reaction progress variable is proportional to the amount of reactant mineral dissolved and defines the extent of reaction. Selection of reaction progress step is arbitrary. Units are moles per kg of solution
+
+#coefficients of change for weathering of microcline to gibbsite (reaction 6)
+co_spar_1 <- -1
+co_H_1 <- -1
+co_H2O_1 <- -7
+co_gibbs_1 <- 1
+co_K_1 <- 1
+co_H4SiO4_1 <- 3
+co_kaol_1 <- 0
+co_musc_1 <- 0
+
+#Make data frame of reaction steps
+
+steps <- seq(0, 100, by = 0.001) # make a sequence of reaction steps
+
+k_spar_to_gibbs <- as.data.frame(steps) # convert sequence to a data frame
+
+#Calculate geochemistry through reaction progress
+
+k_spar_to_gibbs <- k_spar_to_gibbs %>% mutate(mol_l_H = mol_l_H_A + co_H_1 * steps * rxn_prog_var, mol_l_K = mol_l_K_A + co_K_1 * steps * rxn_prog_var, mol_l_H4SiO4 = mol_l_H4SiO4_A + co_H4SiO4_1 * steps * rxn_prog_var, mol_gibbs = mol_gibbs_A + co_gibbs_1 * steps * rxn_prog_var, mol_kaol = mol_kaol_A + co_kaol_1 * steps * rxn_prog_var, mol_musc = mol_musc_A + co_musc_1 * steps * rxn_prog_var, log_H4SiO4 = log10(mol_l_H4SiO4), log_K_H_ratio = log10(mol_l_K/mol_l_H))
+
+k_spar_to_gibbs <- k_spar_to_gibbs %>% filter(log_H4SiO4 <= gibb_intersect_H4SiO4)
+
+k_spar_to_gibbs # print data frame of reaction steps and chemistry
+```
+
+Run this chunk to plot evolution of water chemistry during microcline weathering to gibbsite
+```{r fig.height=4, fig.width=6}
+plot_AB <- k_spar_to_gibbs %>% ggplot(aes(x=log_H4SiO4, y = log_K_H_ratio, color = steps))+ # pass the dataframe to ggplot and tell it what to use for x and y
+  geom_segment(aes(x = gibb_intersect_H4SiO4, y = gibb_intersect_KH, xend = -4.68, yend = -3), color = "black", size = 0.3)+
+  geom_segment(aes(x = gibb_intersect_H4SiO4, y = gibb_intersect_KH, xend = gibb_musc_edge_H4SiO4, yend = 6), color = "black", size = 0.3)+
+  geom_segment(aes(x = gibb_intersect_H4SiO4, y = gibb_intersect_KH, xend = kaol_musc_micr_eq_point_H4SiO4, yend = kaol_musc_micr_eq_point_KH), color = "black", size = 0.3)+
+  geom_segment(aes(x = kaol_musc_micr_eq_point_H4SiO4, y = kaol_musc_micr_eq_point_KH, xend = musc_micr_edge_H4SiO4, yend = musc_micr_edge_KH), color = "black", size = 0.3)+
+  geom_segment(aes(x = kaol_musc_micr_eq_point_H4SiO4, y = kaol_musc_micr_eq_point_KH, xend = -2, yend = kaol_micr_edge_KH), color = "black", size = 0.3)+
+    scale_x_continuous(limits = c(-6, -2), expand = c(0, 0), name = TeX("$\\log\\lbrack H_4SiO_4\\rbrack$"))+
+   scale_y_continuous(limits = c(-3, 6), expand = c(0, 0), name = TeX("$\\log\\frac{\\lbrack K^+ \\rbrack}{\\lbrack H^+ \\rbrack}$"))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+ theme(axis.title.y = element_text(angle = 0, vjust = .5, size = 11))+
+ annotate("text", y = 4, x= -5.4, label = "gibbsite", size = 4)+
+ annotate("text", y = 5.5, x= -4.5, label = "muscovite", size = 4)+
+ annotate("text", y = 5.5, x= -3, label = "microcline", size = 4)+
+ annotate("text", y = -2, x= -3, label = "kaolinite", size = 4)+
+ geom_point(size=1, alpha =1) +
+  scale_color_continuous(name = TeX("reaction progress, $\\xi$"))+ # add legend for reaction progress
+ theme(axis.title.y = element_text(angle = 0, vjust = .5, size = 11))+
+  annotate("text", y = -2.4, x=-5.85, label = "A", size = 6)+ # annotate point A
+  annotate("text", y = -1.3, x=-4.55, label = "B", size = 6) # annotate point B
+
+plot_AB
+```
+**Question 6**: Look at the plot that was generated. Did potassium increase or decrease? What about silicic acid? Where did the potassium and silisic acid come from? What happened amount of gibbsite?
+
+##  Microcline weathering: Gibbsite converted to Kaolinite
+
+Now, we have some gibbsite in our system that was produced by K-feldspar weathering. However, if reaction 6 were to continue, the water chemistry would move out of the field of gibbsite stability. Yet, microcline is not in equilibrium with the water yet either. Thus, in order to approach stability with microcline, all gibbsite must be consumed (reaction 7).
+
+$\text{KAlSi}_3\text{O}_8 + 2\text{Al(OH)}_3 + \text{H}^+  \leftrightharpoons 1.5\text{Al}_2\text{Si}_2\text{O}_5\text{(OH)}_4 + \text{K}^+ + 0.5\text{H}_2\text{O} \space \text{(reaction 7)}$
+
+Input the stoichiometric coefficients of this reaction below and run the chunk to generate a data frame of water chemistries as reaction 7 progresses.
+```{r}
+mol_gibbs_B <- k_spar_to_gibbs$mol_gibbs[nrow(k_spar_to_gibbs)] # moles gibbsite at point B
+mol_l_H_B <-  k_spar_to_gibbs$mol_l_H[nrow(k_spar_to_gibbs)] # moles per liter H+ at point B
+mol_l_K_B <- k_spar_to_gibbs$mol_l_K[nrow(k_spar_to_gibbs)] # moles per liter K+ at point B
+mol_l_H4SiO4_B <- k_spar_to_gibbs$mol_l_H4SiO4[nrow(k_spar_to_gibbs)] # moles per liter H4SiO4 at point B
+mol_kaol_B <- k_spar_to_gibbs$mol_kaol[nrow(k_spar_to_gibbs)]# moles kaolinite at point B
+mol_musc_B <- k_spar_to_gibbs$mol_musc[nrow(k_spar_to_gibbs)]# moles muscovite at point B
+
+# USER INPUT : coefficients of change for weathering of k spar with conversion of gibbsite to kaolinite (reaction 7)
+co_spar_2 <- -1##
+co_H_2 <- -1##
+co_H2O_2 <- .5##
+co_gibbs_2 <- -2##
+co_K_2 <- 1##
+co_H4SiO4_2 <- 0##
+co_kaol_2 <- 1.5##
+co_musc_2 <- 0##
+
+#Make data frame of reaction steps
+
+steps_2 <- seq(0, 100, by = 0.001)
+
+gibbs_to_kaol <- as.data.frame(steps_2)
+
+gibbs_to_kaol <- gibbs_to_kaol %>% mutate(steps = steps_2 + k_spar_to_gibbs$steps[nrow(k_spar_to_gibbs)])
+
+#Calculate geochemistry through reaction progress
+
+gibbs_to_kaol <- gibbs_to_kaol %>% mutate(mol_l_H = mol_l_H_B + co_H_2 * steps_2 * rxn_prog_var, mol_l_K = mol_l_K_B + co_K_2 * steps_2 * rxn_prog_var, mol_l_H4SiO4 = mol_l_H4SiO4_B + co_H4SiO4_2 * steps_2 * rxn_prog_var, mol_gibbs = mol_gibbs_B + co_gibbs_2 * steps_2 * rxn_prog_var, mol_kaol = mol_kaol_B + co_kaol_2 * steps_2 * rxn_prog_var, mol_musc = mol_musc_B + co_musc_2 * steps_2 * rxn_prog_var, log_H4SiO4 = log10(mol_l_H4SiO4), log_K_H_ratio = log10(mol_l_K/mol_l_H))
+
+
+#Merge data frames of all reactions that have occured
+
+gibbs_to_kaol <- gibbs_to_kaol %>% select(-steps_2)
+
+gibbs_to_kaol <- gibbs_to_kaol %>% filter(mol_gibbs >= 0) # filter out data points where there were calculated to be negative moles gibbsite, which is impossible
+
+ABC <- union(k_spar_to_gibbs, gibbs_to_kaol)
+
+ABC <- ABC %>% arrange(steps)
+
+ABC
+```
+
+Now plot the reaction path by running the chunk below
+```{r fig.height=4, fig.width=6}
+plot_ABC <- ABC %>% ggplot(aes(x=log_H4SiO4, y = log_K_H_ratio, color = steps))+ # pass the dataframe to ggplot and tell it what to use for x and y
+  geom_segment(aes(x = gibb_intersect_H4SiO4, y = gibb_intersect_KH, xend = -4.68, yend = -3), color = "black", size = 0.3)+
+  geom_segment(aes(x = gibb_intersect_H4SiO4, y = gibb_intersect_KH, xend = gibb_musc_edge_H4SiO4, yend = 6), color = "black", size = 0.3)+
+  geom_segment(aes(x = gibb_intersect_H4SiO4, y = gibb_intersect_KH, xend = kaol_musc_micr_eq_point_H4SiO4, yend = kaol_musc_micr_eq_point_KH), color = "black", size = 0.3)+
+  geom_segment(aes(x = kaol_musc_micr_eq_point_H4SiO4, y = kaol_musc_micr_eq_point_KH, xend = musc_micr_edge_H4SiO4, yend = musc_micr_edge_KH), color = "black", size = 0.3)+
+  geom_segment(aes(x = kaol_musc_micr_eq_point_H4SiO4, y = kaol_musc_micr_eq_point_KH, xend = -2, yend = kaol_micr_edge_KH), color = "black", size = 0.3)+
+    scale_x_continuous(limits = c(-6, -2), expand = c(0, 0), name = TeX("$\\log\\lbrack H_4SiO_4\\rbrack$"))+
+   scale_y_continuous(limits = c(-3, 6), expand = c(0, 0), name = TeX("$\\log\\frac{\\lbrack K^+ \\rbrack}{\\lbrack H^+ \\rbrack}$"))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+ theme(axis.title.y = element_text(angle = 0, vjust = .5, size = 11))+
+ annotate("text", y = 4, x= -5.4, label = "gibbsite", size = 4)+
+ annotate("text", y = 5.5, x= -4.5, label = "muscovite", size = 4)+
+ annotate("text", y = 5.5, x= -3, label = "microcline", size = 4)+
+ annotate("text", y = -2, x= -3, label = "kaolinite", size = 4)+
+ geom_point(size=1, alpha =1) +
+  scale_color_continuous(name = TeX("reaction progress, $\\xi$"))+ # add legend for reaction progress
+ theme(axis.title.y = element_text(angle = 0, vjust = .5, size = 11))+
+  annotate("text", y = -2.4, x=-5.85, label = "A", size = 6)+ # annotate point A
+  annotate("text", y = -1.3, x=-4.55, label = "B", size = 6)+ # annotate point B
+  annotate("text", y = -.8, x=-4.8, label = "C", size = 6) # annotate point C
+
+plot_ABC
+```
+
+
+**Question 7** What changes in water chemistry occur as gibbsite is converted to kaolinite? How does this relate to the shape of the curve between B and C, and how it differs from the curve A to B?
+
+Plot accumulation of minerals with reaction progress
+```{r fig.height=6, fig.width=6}
+plot_minerals_ABC <- ABC %>% ggplot()+
+  geom_line(aes(x=steps, y=mol_musc, color = "moles muscovite"))+
+  geom_line(aes(x=steps, y=mol_gibbs, color = "moles gibbsite"))+
+  geom_line(aes(x=steps, y=mol_kaol, color = "moles kaolinite"))+
+  scale_y_continuous(name = "moles mineral in system")+
+  scale_x_continuous(name = TeX("reaction progress, $\\xi$"))+
+  theme_bw()
+
+plot_minerals_ABC
+```
+
+**Question 8** You have just plotted mineral abundance versus reaction progress. Why is there an inverse relationship between kaolinite and gibbsite after this point? How does this relate to your phase diagram?
+
+## Microcline weathering to kaolinite
+
+Now, all of our gibbsite has been reacted into kaolinite. However, K-feldspar is still not in equilibrium with the water water chemistry, and further reaction will move through the kaolinite stability field.
+
+**microcline - kaolinite**
+$2\text{KAlSi}_3\text{O}_8 + 2\text{H}^+ + 9\text{H}_2\text{O} \leftrightharpoons  \text{Al}_2\text{Si}_2\text{O}_5\text{(OH)}_4 + 2\text{K}^+ + 4\text{H}_{4}\text{SiO}_{4} \space \text{(reaction 5)}$
+
+```{r}
+mol_gibbs_C <- ABC$mol_gibbs[nrow(ABC)] # moles gibbsite at point C
+mol_l_H_C <-  ABC$mol_l_H[nrow(ABC)] # moles per liter H+ at point C
+mol_l_K_C <- ABC$mol_l_K[nrow(ABC)] # moles per liter K+ at point C
+mol_l_H4SiO4_C <- ABC$mol_l_H4SiO4[nrow(ABC)] # moles per liter H4SiO4 at point C
+mol_kaol_C <- ABC$mol_kaol[nrow(ABC)] # moles kaolinite  at point C
+mol_musc_C <- ABC$mol_musc[nrow(ABC)] # moles muscovite  at point C
+
+#coefficients of change for weathering of microcline to kaolinite (reaction 5)
+co_spar_3 <- -2
+co_H_3 <- -2
+co_H2O_3 <- -9
+co_gibbs_3 <- 0
+co_K_3 <- 2
+co_H4SiO4_3 <- 4
+co_kaol_3 <- 1
+co_musc_3 <- 0
+
+#Make data frame of reaction steps
+
+steps_3 <- seq(0, 100, by = 0.01)
+
+kspar_to_kaol <- as.data.frame(steps_3)
+
+kspar_to_kaol <- kspar_to_kaol %>% mutate(steps = steps_3 + ABC$steps[nrow(ABC)])
+
+
+#Calculate geochemistry through reaction progress
+
+kspar_to_kaol <- kspar_to_kaol %>% mutate(mol_l_H = mol_l_H_C + co_H_3 * steps_3 * rxn_prog_var, mol_l_K = mol_l_K_C + co_K_3 * steps_3 * rxn_prog_var, mol_l_H4SiO4 = mol_l_H4SiO4_C + co_H4SiO4_3 * steps_3 * rxn_prog_var, mol_gibbs = mol_gibbs_C + co_gibbs_3 * steps_3 * rxn_prog_var, mol_kaol = mol_kaol_C + co_kaol_3 * steps_3 * rxn_prog_var, mol_musc = mol_musc_C + co_musc_3 * steps_3 * rxn_prog_var, log_H4SiO4 = log10(mol_l_H4SiO4), log_K_H_ratio = log10(mol_l_K/mol_l_H))
+
+
+#Merge data frames for reactions 1 and 2
+
+kspar_to_kaol <- kspar_to_kaol %>% select(-steps_3)
+kspar_to_kaol <- kspar_to_kaol %>% filter(log_K_H_ratio <= kaol_musc_micr_eq_point_KH) # filter out rxn steps past equilibrium
+
+ABCD <- union(ABC, kspar_to_kaol)
+
+ABCD <- ABCD %>% arrange(steps)
+
+ABCD
+```
+
+
+Now plot the reaction path by running the chunk below
+```{r fig.height=4, fig.width=6}
+plot_ABCD <- ABCD %>% ggplot(aes(x=log_H4SiO4, y = log_K_H_ratio, color = steps))+ # pass the dataframe to ggplot and tell it what to use for x and y
+  geom_segment(aes(x = gibb_intersect_H4SiO4, y = gibb_intersect_KH, xend = -4.68, yend = -3), color = "black", size = 0.3)+
+  geom_segment(aes(x = gibb_intersect_H4SiO4, y = gibb_intersect_KH, xend = gibb_musc_edge_H4SiO4, yend = 6), color = "black", size = 0.3)+
+  geom_segment(aes(x = gibb_intersect_H4SiO4, y = gibb_intersect_KH, xend = kaol_musc_micr_eq_point_H4SiO4, yend = kaol_musc_micr_eq_point_KH), color = "black", size = 0.3)+
+  geom_segment(aes(x = kaol_musc_micr_eq_point_H4SiO4, y = kaol_musc_micr_eq_point_KH, xend = musc_micr_edge_H4SiO4, yend = musc_micr_edge_KH), color = "black", size = 0.3)+
+  geom_segment(aes(x = kaol_musc_micr_eq_point_H4SiO4, y = kaol_musc_micr_eq_point_KH, xend = -2, yend = kaol_micr_edge_KH), color = "black", size = 0.3)+
+   scale_x_continuous(limits = c(-6, -2), expand = c(0, 0), name = TeX("$\\log\\lbrack H_4SiO_4\\rbrack$"))+
+   scale_y_continuous(limits = c(-3, 6), expand = c(0, 0), name = TeX("$\\log\\frac{\\lbrack K^+ \\rbrack}{\\lbrack H^+ \\rbrack}$"))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+ theme(axis.title.y = element_text(angle = 0, vjust = .5, size = 11))+
+ annotate("text", y = 4, x= -5.4, label = "gibbsite", size = 4)+
+ annotate("text", y = 5.5, x= -4.5, label = "muscovite", size = 4)+
+ annotate("text", y = 5.5, x= -3, label = "microcline", size = 4)+
+ annotate("text", y = -2, x= -3, label = "kaolinite", size = 4)+
+ geom_point(size=1, alpha =1) +
+  scale_color_continuous(name = TeX("reaction progress, $\\xi$"))+ # add legend for reaction progress
+ theme(axis.title.y = element_text(angle = 0, vjust = .5, size = 11))+
+  annotate("text", y = -2.4, x=-5.85, label = "A", size = 6)+ # annotate point A
+  annotate("text", y = -1.3, x=-4.55, label = "B", size = 6)+ # annotate point B
+  annotate("text", y = -.8, x=-4.8, label = "C", size = 6)+ # annotate point C
+  annotate("text", y = 3.8, x=-3.85, label = "D", size = 6) # annotate point D
+    
+plot_ABCD
+```
+
+Plot accumulation of minerals, points A - D
+```{r fig.height=6, fig.width=6}
+plot_minerals_ABCD <- ABCD %>% ggplot()+
+  geom_line(aes(x=steps, y=mol_musc, color = "moles muscovite"))+
+  geom_line(aes(x=steps, y=mol_gibbs, color = "moles gibbsite"))+
+  geom_line(aes(x=steps, y=mol_kaol, color = "moles kaolinite"))+
+  scale_y_continuous(name = "moles mineral in system")+
+  scale_x_continuous(name = TeX("reaction progress, $\\xi$"))+
+  theme_bw()
+
+plot_minerals_ABCD
+```
+
+## Microcline weathering with conversion of kaolinite to muscovite, reaching equilibrium between all 3 minerals
+
+$\text{KAlSi}_3\text{O}_8 + \text{Al}_2\text{Si}_2\text{O}_5\text{(OH)}_4 + 3\text{H}_2\text{O} \leftrightharpoons \text{KAl}_3\text{Si}_3\text{O}_{10}\text{(OH)}_2 + 2\text{H}_4\text{SiO}_4 \space \text{(reaction 8)}$
+
+Initial conditions
+```{r}
+mol_gibbs_D <- ABCD$mol_gibbs[nrow(ABCD)] # moles gibbsite at point D
+mol_l_H_D <-  ABCD$mol_l_H[nrow(ABCD)] # moles per liter H+ at point D
+mol_l_K_D <- ABCD$mol_l_K[nrow(ABCD)] # moles per liter K+ at point D
+mol_l_H4SiO4_D <- ABCD$mol_l_H4SiO4[nrow(ABCD)] # moles per liter H4SiO4 at point D
+mol_kaol_D <- ABCD$mol_kaol[nrow(ABCD)] # moles kaolinite  at point D
+mol_musc_D <- ABCD$mol_musc[nrow(ABCD)] # moles muscovite  at point D
+
+#coefficients of change for feldspar weathering with conversion of kaolinite to muscovite (reaction 4)
+co_spar_4 <- -1
+co_H_4 <- 0
+co_H2O_4 <- -3
+co_gibbs_4 <- 0
+co_K_4 <- 0
+co_H4SiO4_4 <- 2
+co_kaol_4 <- -1
+co_musc_4 <- 1
+
+#Make data frame of reaction steps
+
+steps_4 <- seq(0, 100, by = .01)
+
+kspar_to_musc <- as.data.frame(steps_4)
+
+kspar_to_musc <- kspar_to_musc %>% mutate(steps = steps_4 + ABCD$steps[nrow(ABCD)])
+
+
+#Calculate geochemistry through reaction progress
+
+kspar_to_musc <- kspar_to_musc %>% mutate(mol_l_H = mol_l_H_D + co_H_4 * steps_4 * rxn_prog_var, mol_l_K = mol_l_K_D + co_K_4 * steps_4 * rxn_prog_var, mol_l_H4SiO4 = mol_l_H4SiO4_D + co_H4SiO4_4 * steps_4 * rxn_prog_var, mol_gibbs = mol_gibbs_D + co_gibbs_4 * steps_4 * rxn_prog_var, mol_kaol = mol_kaol_D + co_kaol_4 * steps_4 * rxn_prog_var, mol_musc = mol_musc_D + co_musc_4 * steps_4 * rxn_prog_var, log_H4SiO4 = log10(mol_l_H4SiO4), log_K_H_ratio = log10(mol_l_K/mol_l_H))
+
+
+#Merge data frames
+
+kspar_to_musc <- kspar_to_musc %>% select(-steps_4)
+kspar_to_musc <- kspar_to_musc %>% filter(mol_kaol >= 0) # filter out rxn steps past equilibrium
+#kspar_to_musc <- kspar_to_musc %>% filter(log_H4SiO4 <= kaol_musc_micr_eq_point_H4SiO4) # filter out rxn steps past equilibrium
+
+ABCDE <- union(ABCD, kspar_to_musc)
+
+ABCDE <- ABCDE %>% arrange(steps)
+
+ABCDE 
+```
+
+Now plot the reaction path by running the chunk below
+```{r fig.height=4, fig.width=6}
+plot_ABCDE <- ABCDE %>% ggplot(aes(x=log_H4SiO4, y = log_K_H_ratio, color = steps))+ # pass the dataframe to ggplot and tell it what to use for x and y
+  geom_segment(aes(x = gibb_intersect_H4SiO4, y = gibb_intersect_KH, xend = -4.68, yend = -3), color = "black", size = 0.3)+
+  geom_segment(aes(x = gibb_intersect_H4SiO4, y = gibb_intersect_KH, xend = gibb_musc_edge_H4SiO4, yend = 6), color = "black", size = 0.3)+
+  geom_segment(aes(x = gibb_intersect_H4SiO4, y = gibb_intersect_KH, xend = kaol_musc_micr_eq_point_H4SiO4, yend = kaol_musc_micr_eq_point_KH), color = "black", size = 0.3)+
+  geom_segment(aes(x = kaol_musc_micr_eq_point_H4SiO4, y = kaol_musc_micr_eq_point_KH, xend = musc_micr_edge_H4SiO4, yend = musc_micr_edge_KH), color = "black", size = 0.3)+
+  geom_segment(aes(x = kaol_musc_micr_eq_point_H4SiO4, y = kaol_musc_micr_eq_point_KH, xend = -2, yend = kaol_micr_edge_KH), color = "black", size = 0.3)+
+  scale_x_continuous(limits = c(-6, -2), expand = c(0, 0), name = TeX("$\\log\\lbrack H_4SiO_4\\rbrack$"))+
+   scale_y_continuous(limits = c(-3, 6), expand = c(0, 0), name = TeX("$\\log\\frac{\\lbrack K^+ \\rbrack}{\\lbrack H^+ \\rbrack}$"))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+ theme(axis.title.y = element_text(angle = 0, vjust = .5, size = 11))+
+ annotate("text", y = 4, x= -5.4, label = "gibbsite", size = 4)+
+ annotate("text", y = 5.5, x= -4.5, label = "muscovite", size = 4)+
+ annotate("text", y = 5.5, x= -3, label = "microcline", size = 4)+
+ annotate("text", y = -2, x= -3, label = "kaolinite", size = 4)+
+ geom_point(size=1, alpha =1) +
+  scale_color_continuous(name = TeX("reaction progress, $\\xi$"))+ # add legend for reaction progress
+ theme(axis.title.y = element_text(angle = 0, vjust = .5, size = 11))+
+  annotate("text", y = -2.4, x=-5.85, label = "A", size = 6)+ # annotate point A
+  annotate("text", y = -1.3, x=-4.55, label = "B", size = 6)+ # annotate point B
+  annotate("text", y = -.8, x=-4.8, label = "C", size = 6)+ # annotate point C
+  annotate("text", y = 3.7, x=-3.85, label = "D", size = 6)+ # annotate point D
+  annotate("text", y = 3.7, x=-3.4, label = "E", size = 6) # annotate point E
+    
+plot_ABCDE
+```
+
+Plot accumulation of minerals points A-E
+```{r fig.height=6, fig.width=6}
+plot_minerals_ABCDE <- ABCDE %>% ggplot()+
+  geom_line(aes(x=steps, y=mol_musc, color = "moles muscovite"))+
+  geom_line(aes(x=steps, y=mol_gibbs, color = "moles gibbsite"))+
+  geom_line(aes(x=steps, y=mol_kaol, color = "moles kaolinite"))+
+  scale_y_continuous(name = "moles mineral in system")+
+  scale_x_continuous(name = TeX("reaction progress, $\\xi$"))+
+  theme_bw()
+
+plot_minerals_ABCDE
+```
+
+## Animating the full reaction
+
+Finally, let's animate the changes in water chemistry and mineral abundances together and watch the full reaction unfold!
+```{r, warning=FALSE, message=FALSE}
+plot_reactions_ABCDE_anim <- ABCDE %>%
+  dplyr::slice(seq(from = 1, to = nrow(ABCDE), by = 100)) %>% # select only every 100th point. Default "slice" is from CHNOSZ package
+  arrange(log_H4SiO4) %>%
+  plot_ly() %>%
+  add_trace(x = ~log_H4SiO4,
+            y = ~log_K_H_ratio,
+            mode = "lines+markers",
+            marker = list(color = "black"),
+            line = list(color = "black")) %>%
+  add_trace(x = ~log_H4SiO4, 
+            y = ~log_K_H_ratio, 
+            frame = ~steps, 
+            marker = list(color = "red", size = 10)) %>%
+  layout(xaxis = list(title = "log[H4SiO4]", range = c(-6, -3)),
+         yaxis = list(title = "log[K+/H+]", range = c(-3, 5)))
+
+plot_minerals_rxns_ABCDE_anim <- ABCDE %>%
+  dplyr::slice(seq(from = 1, to = nrow(ABCDE), by = 100)) %>%
+  rename("Gibbsite" = "mol_gibbs", "Kaolonite" = "mol_kaol", "Muscovite" = "mol_musc") %>% 
+  gather(key = "phase", value = "moles", Gibbsite, Kaolonite, Muscovite) %>%
+  plot_ly() %>%
+  add_trace(x = ~phase,
+            y = ~moles*10^6,
+            type = 'bar',
+            frame = ~steps,
+            color = ~phase) %>%
+  layout(xaxis = list(title = "Reaction progress"),
+         yaxis = list(title = "Micromoles mineral in system", range = c(0, 50)))
+
+
+
+
+subplot(plot_reactions_ABCDE_anim, plot_minerals_rxns_ABCDE_anim, 
+        nrows = 1, 
+        titleX = T, 
+        titleY = T, 
+        margin = 0.05) %>% 
+  layout(showlegend = FALSE, title = "Reaction Animation") %>% 
+  animation_opts(frame = 300, transition = 0, redraw = TRUE)
+```
+
+

@@ -13,5 +13,5 @@ editor_options:
 
 # Analysis Scripts
 
-## - [weathering_pset](weathering.pset.html)
+## - [weathering_pset_student_1](weathering_pset_student_1.html)
 
