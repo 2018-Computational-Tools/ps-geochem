@@ -1,37 +1,51 @@
-# History files
-.Rhistory
-.Rapp.history
+# OS generated files
+.DS_Store
+.DS_Store?
+~$*
+.Spotlight*
+.Trashes
+ehthumbs.db
+Thumbs.db
 
-# Session Data files
-.RData
-
-# Example code in package build process
-*-Ex.R
-
-# Output files from R CMD build
-/*.tar.gz
-
-# Output files from R CMD check
-/*.Rcheck/
-
-# RStudio files
-.Rproj.user/
-
-# produced vignettes
-vignettes/*.html
-vignettes/*.pdf
-
-# OAuth2 token, see https://github.com/hadley/httr/releases/tag/v0.3
-.httr-oauth
-
-# knitr and R markdown default cache directories
-/*_cache/
-/cache/
-
-# Temporary files created by R markdown
+# exclude R & Rstudio temp files
 *.utf8.md
 *.knit.md
-
-# Shiny token, see https://shiny.rstudio.com/articles/shinyapps.html
-rsconnect/
 .Rproj.user
+.Rhistory
+.Rapp.history
+.RData
+.Ruserdata
+.Rproj.user/
+.Rbuildignore
+packrat/lib*/
+packrat/src/
+
+# exclude Python and Jupyter temp files
+.ipynb_checkpoints
+*.pyc
+
+# exclude authentication tokens
+.httr-oauth
+
+# exclude cache
+*cache/*
+
+# exclude output files
+*.pdf
+*.html
+*.png
+*.jpeg
+*.jpg
+*.pptx
+*.docx
+*.xlsx
+*.csv
+
+# allow all files in data
+!data/*
+
+# allow all files in documents
+!documents/*
+
+# allow rendered html files in docs
+!docs/**/*.html
