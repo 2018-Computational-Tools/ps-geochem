@@ -2,7 +2,6 @@
 title: "Mineral Stability Diagrams: K Feldspar Weathering"
 output:
   html_document:
-    css: stylesheet.css
     fig_caption: yes
     number_sections: yes
     toc: yes
@@ -56,7 +55,16 @@ library(knitr) # generating reports
 library(plotly) # interactive plots
 library(CHNOSZ) # stability diagrams
 library(latex2exp) # writing compounds and greek letters in plots
-data(thermo)
+
+# add H4SiO4 to thermodynamic data base
+reset() 
+add.obigt("AS04") # add data from Apps and Spycher 2004
+s_25C <- subcrt(c("SiO2", "H2O"), c(1, 2), T = 25)$out
+with(
+  s_25C, 
+  mod.obigt("H4SiO4", formula = "H4SiO4", G = G, H = H, S = S, Cp = Cp, V = V, z = 0)
+)
+
 opts_chunk$set(
   collapse = TRUE, comment = "#>",
   dev=c("png", "pdf"), dev.args=list(pdf = list(encoding="WinAnsi", useDingbats=FALSE))
@@ -151,7 +159,7 @@ fill <- "terrain"
 ## Steinmann et al., 1994 (http://ccm.geoscienceworld.org/content/42/2/197)
 ## Garrels and Christ, p. 361 (http://www.worldcat.org/oclc/517586)
 ## https://wwwbrr.cr.usgs.gov/projects/GWC_coupled/phreeqc/html/final-75.html
-basis <- basis(c("Al+3", "pseudo-H4SiO4", "K+", "H2O", "H+", "O2"))
+basis <- basis(c("Al+3", "H4SiO4", "K+", "H2O", "H+", "O2"))
 species <- species(c("gibbsite", "muscovite", "kaolinite", "K-feldspar"))
 a <- affinity(H4SiO4 = c(-6, -2, res), `K+` = c(-3, 6, res))
 
